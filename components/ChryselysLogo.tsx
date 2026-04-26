@@ -18,7 +18,7 @@ export function ChryselysLogo({ size = 48, showWordmark = false, className }: Pr
       {!imgFailed ? (
         // The actual brand mark (the wordmark is baked into the image)
         <img
-          src="/chryselys-logo.png"
+          src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/chryselys-logo.png`}
           alt="Chryselys"
           width={showWordmark ? size * 2.6 : size}
           height={size}

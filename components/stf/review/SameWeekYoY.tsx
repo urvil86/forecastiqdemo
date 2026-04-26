@@ -27,8 +27,8 @@ export function SameWeekYoY() {
   }, [computed, metric]);
 
   // Quarterly comparison
-  const quarterly = useMemo(() => {
-    if (!computed) return [];
+  const quarterly = useMemo<Record<string, { q1: number; q2: number; q3: number; q4: number; total: number }>>(() => {
+    if (!computed) return {};
     const out: Record<string, { q1: number; q2: number; q3: number; q4: number; total: number }> = {};
     for (const m of computed.monthly) {
       if (m.year < 2024) continue;

@@ -58,7 +58,7 @@ function BurndownCard({
   xKey: string;
   xLabel: string;
   summary: { label: string; value: string }[];
-  todayMarker: number;
+  todayMarker: number | string;
 }) {
   return (
     <div className="card">

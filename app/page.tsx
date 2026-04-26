@@ -1,5 +1,14 @@
-import { redirect } from "next/navigation";
+"use client";
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+
+// Static export can't do server-side redirect(), so this is a client-side
+// redirect that fires immediately on mount.
 export default function Home() {
-  redirect("/lrp");
+  const router = useRouter();
+  useEffect(() => {
+    router.replace("/lrp");
+  }, [router]);
+  return null;
 }

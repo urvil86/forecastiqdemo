@@ -621,11 +621,11 @@ export const useStore = create<AppStore>()(
         demoMode: state.demoMode,
         growthIntel: state.growthIntel,
       }),
-      migrate: (persisted, version) => {
-        // Any older persisted state — drop it, hydrate from seed.
-        if (version < 2) return undefined as unknown as Partial<AppStore>;
-        return persisted as Partial<AppStore>;
-      },
+      migrate: ((persisted: unknown, version: number) => {
+        // Any older persisted state — drop it, the merge() below will hydrate from seed.
+        if (version < 2) return undefined;
+        return persisted;
+      }) as never,
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<AppStore>;
         const seed = getSeedForecast();
