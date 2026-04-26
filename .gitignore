@@ -4,14 +4,11 @@ node_modules/
 .pnp.js
 .yarn/install-state.gz
 
-# Build output
-.next/
-out/
-dist/
-build/
-
-# Production
-/build
+# Build output (anchored to root so they don't match nested dirs like components/stf/build/)
+/.next/
+/out/
+/dist/
+/build/
 
 # Vercel
 .vercel/
@@ -32,8 +29,8 @@ pnpm-debug.log*
 *.log
 
 # Testing
-coverage/
-.nyc_output/
+/coverage/
+/.nyc_output/
 
 # IDE / editor
 .vscode/
