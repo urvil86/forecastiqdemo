@@ -67,7 +67,8 @@ export default function LrpReviewPage() {
               value={compareToVersionId ?? ""}
               onChange={(e) => setCompareToVersionId(e.target.value || null)}
             >
-              <option value="">— prior version —</option>
+              <option value="">— auto (most recent saved, or seed) —</option>
+              <option value="__seed__">v0 · Initial seed (baseline)</option>
               {versionHistory.map((v) => (
                 <option key={v.id} value={v.id}>v{v.version} · {v.label}</option>
               ))}

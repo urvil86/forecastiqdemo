@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { useStore } from "@/lib/store";
-import { compute, type ConnectedForecast } from "@/lib/engine";
+import { compute, getSeedForecast, type ConnectedForecast } from "@/lib/engine";
 import { SectionHeader } from "@/components/SectionHeader";
 import { formatUsdShort, formatPct } from "@/lib/format";
 
@@ -11,6 +11,12 @@ interface DriverDelta {
   delta: number;
   positive: boolean;
   reasoning: string;
+}
+
+interface PriorVersionRef {
+  version: number;
+  label: string;
+  forecast: ConnectedForecast;
 }
 
 export function VarianceWaterfall({
@@ -25,9 +31,28 @@ export function VarianceWaterfall({
   const forecast = useStore((s) => s.forecast);
   const versionHistory = useStore((s) => s.versionHistory);
 
-  const priorVersion = compareToVersionId
-    ? versionHistory.find((v) => v.id === compareToVersionId)
-    : versionHistory[0];
+  // Resolve the prior version to compare against:
+  //   • "__seed__"    → unedited initial seed forecast
+  //   • specific id   → that saved snapshot
+  //   • null + saved  → most recent saved snapshot
+  //   • null + none   → fallback to seed (so the waterfall is always meaningful
+  //                     once the user has edited anything, even before they save)
+  const priorVersion: PriorVersionRef | null = useMemo(() => {
+    if (compareToVersionId === "__seed__") {
+      const seed = getSeedForecast();
+      return { version: 0, label: "Initial seed (baseline)", forecast: seed };
+    }
+    if (compareToVersionId) {
+      const found = versionHistory.find((v) => v.id === compareToVersionId);
+      return found ? { version: found.version, label: found.label, forecast: found.forecast } : null;
+    }
+    if (versionHistory.length > 0) {
+      const v = versionHistory[0];
+      return { version: v.version, label: v.label, forecast: v.forecast };
+    }
+    const seed = getSeedForecast();
+    return { version: 0, label: "Initial seed (baseline)", forecast: seed };
+  }, [compareToVersionId, versionHistory]);
 
   const result = useMemo(() => {
     if (!priorVersion) return null;
@@ -73,10 +98,9 @@ export function VarianceWaterfall({
   if (!result) {
     return (
       <div>
-        <SectionHeader title={`What Changed · v${forecast.version} vs prior`} subtitle="Variance waterfall — only available with a prior saved version." />
+        <SectionHeader title={`What Changed · v${forecast.version} vs prior`} subtitle="Selected comparison version not found." />
         <div className="card text-sm text-muted text-center py-8">
-          No prior versions saved yet. Click <strong>Save Version</strong> on the LRP authoring page, make some changes, and the
-          variance waterfall will appear here.
+          The version you selected isn&apos;t available. Pick another from the dropdown above.
         </div>
       </div>
     );
@@ -97,7 +121,7 @@ export function VarianceWaterfall({
   return (
     <div>
       <SectionHeader
-        title={`What Changed · v${forecast.version} vs v${prior!.version}`}
+        title={`What Changed · v${forecast.version} (${forecast.versionLabel}) vs v${prior.version} (${prior.label})`}
         subtitle={`Driver-by-driver decomposition for ${year}. Each step shows the marginal $ impact when that piece is swapped from the prior version into the current.`}
         right={
           <div className="flex items-center gap-2">
@@ -113,7 +137,7 @@ export function VarianceWaterfall({
       <div className="card">
         {/* Waterfall */}
         <div className="space-y-3">
-          <WaterfallRow label={`Prior (v${prior!.version}) ${year}`} value={baselineNet} type="anchor-prior" widthPct={(baselineNet / totalRange) * 100} />
+          <WaterfallRow label={`Prior · v${prior.version} ${prior.label} · ${year}`} value={baselineNet} type="anchor-prior" widthPct={(baselineNet / totalRange) * 100} />
           {deltas.map((d, i) => {
             runningTotal += d.delta;
             return (
