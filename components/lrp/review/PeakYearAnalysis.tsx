@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { useStore } from "@/lib/store";
-import { compute } from "@/lib/engine";
+import { compute, getSeedForecast } from "@/lib/engine";
 import { SectionHeader } from "@/components/SectionHeader";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, LineChart, Line, ReferenceLine, Cell } from "recharts";
 import { formatUsdShort, formatPct } from "@/lib/format";
@@ -12,11 +12,14 @@ export function PeakYearAnalysis({ viewThroughYear }: { viewThroughYear: number 
   const computed = useStore((s) => s.computed);
   const versionHistory = useStore((s) => s.versionHistory);
 
-  // Compute peak year for current + every saved version
+  // Compute peak year for seed + every saved version + current.
+  // Seed always included so even a single saved version produces 3 distinct
+  // data points (seed, save, current) and the drift visualization is meaningful.
   const versionPeaks = useMemo(() => {
     const all = [
+      { versionLabel: "v0 seed", c: compute(getSeedForecast()) },
       ...versionHistory.slice().reverse().map((v) => ({ versionLabel: `v${v.version}`, c: compute(v.forecast) })),
-      { versionLabel: `v${forecast.version}`, c: computed ?? compute(forecast) },
+      { versionLabel: `v${forecast.version} (current)`, c: computed ?? compute(forecast) },
     ];
     return all.map(({ versionLabel, c }) => {
       let peakYear = 2026;

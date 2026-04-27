@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { useStore } from "@/lib/store";
-import { compute } from "@/lib/engine";
+import { compute, getSeedForecast } from "@/lib/engine";
 import { SectionHeader } from "@/components/SectionHeader";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine } from "recharts";
 import { formatUsdShort, formatPct } from "@/lib/format";
@@ -13,10 +13,21 @@ export function ForecastEvolution({ viewThroughYear }: { viewThroughYear: number
   const forecast = useStore((s) => s.forecast);
   const versionHistory = useStore((s) => s.versionHistory);
 
-  // Build versions in chronological order: oldest snapshot first → current last
+  // Build versions in chronological order. Always start with the unedited seed
+  // (v0) so drift columns are meaningful even when only one version has been saved.
   const versionsChrono = useMemo(() => {
-    const list = [...versionHistory].reverse(); // store keeps newest-first
-    return [...list, { id: "current", version: forecast.version, label: forecast.versionLabel, forecast }];
+    const seedSnapshot = {
+      id: "__seed__",
+      version: 0,
+      label: "Initial seed",
+      forecast: getSeedForecast(),
+    };
+    const saved = [...versionHistory].reverse(); // store keeps newest-first
+    return [
+      seedSnapshot,
+      ...saved,
+      { id: "current", version: forecast.version, label: forecast.versionLabel, forecast },
+    ];
   }, [versionHistory, forecast]);
 
   const computedByVersion = useMemo(() => versionsChrono.map((v) => ({ v, c: compute(v.forecast) })), [versionsChrono]);
@@ -47,20 +58,6 @@ export function ForecastEvolution({ viewThroughYear }: { viewThroughYear: number
     });
   }, [computedByVersion]);
 
-  if (versionsChrono.length === 1) {
-    return (
-      <div>
-        <SectionHeader
-          title="Forecast Evolution · Tracking Drift Over Time"
-          subtitle="Heatmap of version-over-version drift across forecast years."
-        />
-        <div className="card text-sm text-muted text-center py-8">
-          Only one version exists yet. Save a few versions on the LRP authoring page and the drift heatmap and cumulative line will
-          appear here.
-        </div>
-      </div>
-    );
-  }
 
   function colorForPct(p: number): string {
     // map -10%..+10% to red..green

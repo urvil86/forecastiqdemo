@@ -2,12 +2,14 @@
 
 import { useMemo } from "react";
 import { useStore } from "@/lib/store";
-import { compute } from "@/lib/engine";
+import { compute, getSeedForecast } from "@/lib/engine";
 import { SectionHeader } from "@/components/SectionHeader";
-import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine, Legend, ReferenceDot } from "recharts";
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine, Legend } from "recharts";
 import { formatUsdShort, formatPct } from "@/lib/format";
 
 interface VersionEntry { id: string; version: number; label: string; current: boolean }
+
+interface PriorRef { id: string; version: number; label: string; computed: ReturnType<typeof compute> }
 
 export function NetSalesTrajectory({
   viewThroughYear,
@@ -20,11 +22,28 @@ export function NetSalesTrajectory({
   const computed = useStore((s) => s.computed);
   const versionHistory = useStore((s) => s.versionHistory);
 
+  // Build the list of prior lines to show:
+  //   • Up to 3 most recent saved versions (faint gray)
+  //   • Always include the unedited seed (v0) as a visible baseline reference
+  const priorList: PriorRef[] = useMemo(() => {
+    const list: PriorRef[] = versionHistory.slice(0, 3).map((v) => ({
+      id: v.id,
+      version: v.version,
+      label: v.label,
+      computed: compute(v.forecast),
+    }));
+    list.push({
+      id: "__seed__",
+      version: 0,
+      label: "Initial seed (baseline)",
+      computed: compute(getSeedForecast()),
+    });
+    return list;
+  }, [versionHistory]);
+
   const data = useMemo(() => {
     if (!computed) return [];
     const rows: Record<string, number | string | null>[] = [];
-    // Compute prior versions
-    const priorComputed = versionHistory.slice(0, 4).map((v) => ({ v, c: compute(v.forecast) }));
     for (const a of computed.annual) {
       if (a.year > viewThroughYear) continue;
       const isHistorical = forecast.lrp.annualActuals.some((aa) => aa.year === a.year);
@@ -33,14 +52,14 @@ export function NetSalesTrajectory({
         current: a.netSales / 1e6,
         actual: isHistorical ? a.netSales / 1e6 : null,
       };
-      priorComputed.forEach((p, i) => {
-        const found = p.c.annual.find((aa) => aa.year === a.year);
-        row[`v${i}`] = found ? found.netSales / 1e6 : null;
+      priorList.forEach((p, i) => {
+        const found = p.computed.annual.find((aa) => aa.year === a.year);
+        row[`prior${i}`] = found ? found.netSales / 1e6 : null;
       });
       rows.push(row);
     }
     return rows;
-  }, [computed, forecast, versionHistory, viewThroughYear]);
+  }, [computed, forecast, priorList, viewThroughYear]);
 
   const kpis = useMemo(() => {
     if (!computed) return null;
@@ -58,21 +77,15 @@ export function NetSalesTrajectory({
     const span = Math.min(2035, viewThroughYear) - 2026;
     const cagr = a26 > 0 && span > 0 ? Math.pow(a35 / a26, 1 / span) - 1 : 0;
 
-    // Compare to most recent prior version
-    const prior = versionHistory[0];
-    let priorPeakYear: number | null = null;
-    let priorPeak: number | null = null;
-    if (prior) {
-      const c = compute(prior.forecast);
-      let pY = 2026, p = 0;
-      for (const a of c.annual.filter((aa) => aa.year <= viewThroughYear)) {
-        if (a.netSales > p) { p = a.netSales; pY = a.year; }
-      }
-      priorPeakYear = pY;
-      priorPeak = p;
+    // Compare KPI deltas against the unedited seed so the "was X before" line is always meaningful.
+    const seedComputed = compute(getSeedForecast());
+    let priorPeakYear: number = 2026;
+    let priorPeak: number = 0;
+    for (const a of seedComputed.annual.filter((aa) => aa.year <= viewThroughYear)) {
+      if (a.netSales > priorPeak) { priorPeak = a.netSales; priorPeakYear = a.year; }
     }
     return { peakYear, peak, cagr, priorPeakYear, priorPeak };
-  }, [computed, viewThroughYear, versionHistory]);
+  }, [computed, viewThroughYear]);
 
   const cutoffYear = parseInt(forecast.timeframe.forecastStart.slice(0, 4));
 
@@ -89,17 +102,21 @@ export function NetSalesTrajectory({
               <Tooltip formatter={(v: number | string) => (typeof v === "number" ? formatUsdShort(v * 1e6) : "—")} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <ReferenceLine x={cutoffYear} stroke="#C98B27" strokeDasharray="4 4" label={{ value: "Today", fontSize: 11, fill: "#C98B27" }} />
-              {versionHistory.slice(0, 4).map((v, i) => (
-                <Line
-                  key={v.id}
-                  dataKey={`v${i}`}
-                  stroke="#5C6770"
-                  strokeOpacity={0.4}
-                  strokeWidth={1.6}
-                  dot={false}
-                  name={`v${v.version} · ${v.label}`}
-                />
-              ))}
+              {priorList.map((p, i) => {
+                const isSeed = p.id === "__seed__";
+                return (
+                  <Line
+                    key={p.id}
+                    dataKey={`prior${i}`}
+                    stroke={isSeed ? "#C98B27" : "#5C6770"}
+                    strokeOpacity={isSeed ? 0.85 : 0.45}
+                    strokeWidth={isSeed ? 2 : 1.6}
+                    strokeDasharray={isSeed ? "4 3" : undefined}
+                    dot={false}
+                    name={`v${p.version} · ${p.label}`}
+                  />
+                );
+              })}
               <Line
                 dataKey="current"
                 stroke="#004466"
@@ -118,20 +135,20 @@ export function NetSalesTrajectory({
           <KpiTile
             label="Peak Year"
             value={String(kpis.peakYear)}
-            sub={kpis.priorPeakYear !== null ? `was ${kpis.priorPeakYear} in prior` : "no prior version"}
+            sub={`vs ${kpis.priorPeakYear} in seed`}
           />
           <KpiTile
             label="Peak Net Sales"
             value={formatUsdShort(kpis.peak)}
-            sub={kpis.priorPeak !== null ? `was ${formatUsdShort(kpis.priorPeak)} (${formatPct((kpis.peak - kpis.priorPeak) / kpis.priorPeak)})` : "no prior version"}
-            positive={kpis.priorPeak !== null && kpis.peak >= kpis.priorPeak}
+            sub={kpis.priorPeak > 0 ? `vs ${formatUsdShort(kpis.priorPeak)} in seed (${formatPct((kpis.peak - kpis.priorPeak) / kpis.priorPeak)})` : "no seed comparison"}
+            positive={kpis.peak >= kpis.priorPeak}
           />
           <KpiTile label={`${cutoffYear}–${Math.min(2035, viewThroughYear)} CAGR`} value={formatPct(kpis.cagr)} sub="annualized growth" />
         </div>
       )}
       <p className="text-xs text-muted mt-3">
-        Versions: {versions.length}. Annotations on the current line indicate points where major assumptions changed (visible when
-        you hover the inflection points). Historical actuals shown as green dots.
+        Lines: current (navy, bold) · {priorList.length - 1} most recent saved version{priorList.length - 1 === 1 ? "" : "s"} (gray)
+        · Initial seed (gold dashed). Hover any line for exact values; green dots are historical actuals.
       </p>
     </div>
   );
