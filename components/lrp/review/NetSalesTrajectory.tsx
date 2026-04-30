@@ -14,19 +14,41 @@ interface PriorRef { id: string; version: number; label: string; computed: Retur
 export function NetSalesTrajectory({
   viewThroughYear,
   versions,
+  compareToVersionId,
 }: {
   viewThroughYear: number;
   versions: VersionEntry[];
+  compareToVersionId: string | null;
 }) {
   const forecast = useStore((s) => s.forecast);
   const computed = useStore((s) => s.computed);
   const versionHistory = useStore((s) => s.versionHistory);
 
-  // Build the list of prior lines to show:
-  //   • Up to 3 most recent saved versions (faint gray)
-  //   • Always include the unedited seed (v0) as a visible baseline reference
+  // When a specific comparison target is picked, show ONLY current + that one
+  // (cleaner two-line chart). When auto, show seed + up to 2 saved versions.
   const priorList: PriorRef[] = useMemo(() => {
-    const list: PriorRef[] = versionHistory.slice(0, 3).map((v) => ({
+    if (compareToVersionId === "__seed__") {
+      return [{
+        id: "__seed__",
+        version: 0,
+        label: "Initial seed (baseline)",
+        computed: compute(getSeedForecast()),
+      }];
+    }
+    if (compareToVersionId) {
+      const found = versionHistory.find((v) => v.id === compareToVersionId);
+      if (found) {
+        return [{
+          id: found.id,
+          version: found.version,
+          label: found.label,
+          computed: compute(found.forecast),
+        }];
+      }
+      return [];
+    }
+    // Auto: up to 2 most recent saved + seed
+    const list: PriorRef[] = versionHistory.slice(0, 2).map((v) => ({
       id: v.id,
       version: v.version,
       label: v.label,
@@ -39,7 +61,9 @@ export function NetSalesTrajectory({
       computed: compute(getSeedForecast()),
     });
     return list;
-  }, [versionHistory]);
+  }, [compareToVersionId, versionHistory]);
+
+  const hasSpecificCompare = compareToVersionId !== null;
 
   const data = useMemo(() => {
     if (!computed) return [];
@@ -104,16 +128,19 @@ export function NetSalesTrajectory({
               <ReferenceLine x={cutoffYear} stroke="#C98B27" strokeDasharray="4 4" label={{ value: "Today", fontSize: 11, fill: "#C98B27" }} />
               {priorList.map((p, i) => {
                 const isSeed = p.id === "__seed__";
+                // When user has explicitly picked a comparison target, render that
+                // line bold + gold + dashed so the diff vs current is unmistakable.
+                const isPickedCompare = hasSpecificCompare && priorList.length === 1;
                 return (
                   <Line
                     key={p.id}
                     dataKey={`prior${i}`}
-                    stroke={isSeed ? "#C98B27" : "#5C6770"}
-                    strokeOpacity={isSeed ? 0.85 : 0.45}
-                    strokeWidth={isSeed ? 2 : 1.6}
-                    strokeDasharray={isSeed ? "4 3" : undefined}
-                    dot={false}
-                    name={`v${p.version} · ${p.label}`}
+                    stroke={isPickedCompare || isSeed ? "#C98B27" : "#5C6770"}
+                    strokeOpacity={isPickedCompare ? 1 : isSeed ? 0.85 : 0.45}
+                    strokeWidth={isPickedCompare ? 2.5 : isSeed ? 2 : 1.6}
+                    strokeDasharray={isPickedCompare || isSeed ? "5 3" : undefined}
+                    dot={isPickedCompare ? { r: 3, fill: "#C98B27" } : false}
+                    name={`v${p.version} · ${p.label}${isPickedCompare ? " (comparison)" : ""}`}
                   />
                 );
               })}

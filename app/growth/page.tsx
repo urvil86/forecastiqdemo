@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useStore } from "@/lib/store";
 import { GrowthHeader } from "@/components/growth/GrowthHeader";
 import { SetupCard } from "@/components/growth/GrowthInputCards";
@@ -63,6 +64,15 @@ function buildConstraints(form: GrowthFormState): OptimizationConstraint[] {
 }
 
 export default function GrowthPage() {
+  // useSearchParams in static export must sit under a Suspense boundary
+  return (
+    <Suspense fallback={null}>
+      <GrowthPageInner />
+    </Suspense>
+  );
+}
+
+function GrowthPageInner() {
   const [form, setForm] = useState<GrowthFormState>(DEFAULT_FORM);
   const [manualForm, setManualForm] = useState<ManualFormState>(DEFAULT_MANUAL_FORM);
   const computed = useStore((s) => s.computed);
@@ -73,10 +83,44 @@ export default function GrowthPage() {
   const clearGrowthIntel = useStore((s) => s.clearGrowthIntel);
 
   const [resultsStale, setResultsStale] = useState(false);
+  const searchParams = useSearchParams();
+  const urlAutoRanRef = useRef(false);
 
   useEffect(() => {
     if (!computed) recompute();
   }, [computed, recompute]);
+
+  // Read URL params for deep-linking from /lrp/review (Promo Mix Modeling CTA):
+  //   ?budget=35000000        → preset budget slider
+  //   ?year=2027              → preset forecast year
+  //   ?context=offset-events  → informational flag
+  // After applying once, auto-trigger the optimizer so the user lands on results.
+  useEffect(() => {
+    if (urlAutoRanRef.current || !computed) return;
+    const budgetParam = searchParams.get("budget");
+    const yearParam = searchParams.get("year");
+    if (!budgetParam && !yearParam) return;
+    const budget = budgetParam ? Math.max(1_000_000, Math.min(50_000_000, parseInt(budgetParam))) : DEFAULT_FORM.budgetUsd;
+    const year = yearParam && [2026, 2027, 2028, 2029, 2030].includes(parseInt(yearParam))
+      ? parseInt(yearParam)
+      : DEFAULT_FORM.forecastYear;
+    setForm((f) => ({ ...f, budgetUsd: budget, forecastYear: year }));
+    setManualForm((f) => ({ ...f, forecastYear: year }));
+    urlAutoRanRef.current = true;
+    // Direct call with the new values — don't wait for form-state ping-pong
+    setTimeout(() => {
+      void runGrowthIntel({
+        budgetUsd: budget,
+        forecastYear: year,
+        timelineWeeks: 52,
+        constraints: [],
+        objective: "max-revenue",
+      });
+      setTimeout(() => {
+        document.getElementById("growth-results")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 200);
+    }, 80);
+  }, [searchParams, computed, runGrowthIntel]);
 
   const baselineRevenue = computed?.annual.find((a) => a.year === form.forecastYear)?.netSales ?? 0;
 

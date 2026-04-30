@@ -9,6 +9,7 @@ import { DriverSensitivity } from "@/components/lrp/review/DriverSensitivity";
 import { PeakYearAnalysis } from "@/components/lrp/review/PeakYearAnalysis";
 import { GeographicDecomposition } from "@/components/lrp/review/GeographicDecomposition";
 import { ConfidenceCone } from "@/components/lrp/review/ConfidenceCone";
+import { MarketEventSensitivity } from "@/components/lrp/review/MarketEventSensitivity";
 import { useState } from "react";
 import { Download } from "lucide-react";
 
@@ -20,6 +21,7 @@ const SECTIONS = [
   { id: "peak", label: "5. Peak Year Analysis" },
   { id: "geo", label: "6. Subnational US Regions" },
   { id: "cone", label: "7. Confidence Cone" },
+  { id: "events", label: "8. Market Event Sensitivity" },
 ];
 
 const YEAR_OPTIONS = [2027, 2028, 2030, 2032, 2035];
@@ -94,7 +96,7 @@ export default function LrpReviewPage() {
         </div>
 
         <section id="trajectory">
-          <NetSalesTrajectory viewThroughYear={viewThroughYear} versions={versions} />
+          <NetSalesTrajectory viewThroughYear={viewThroughYear} versions={versions} compareToVersionId={compareToVersionId} />
         </section>
         <section id="waterfall">
           <VarianceWaterfall
@@ -117,6 +119,9 @@ export default function LrpReviewPage() {
         </section>
         <section id="cone">
           <ConfidenceCone viewThroughYear={viewThroughYear} />
+        </section>
+        <section id="events">
+          <MarketEventSensitivity />
         </section>
       </div>
     </div>
