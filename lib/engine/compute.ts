@@ -8,7 +8,7 @@ import type {
   TrendAlgorithm,
 } from "./types";
 import { trend } from "./trending";
-import { applyEventsAnnual, applyStfEventsFactor } from "./events";
+import { applyEventsAnnual, applyStfEventsFactor, sigmoidImpact } from "./events";
 import { interpolateAnchors } from "./cascade";
 import { netPriceFromGross } from "./pricing";
 import {
@@ -27,6 +27,59 @@ export const ENGINE_NOW_YEAR = 2026;
 const DAY_KEYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 type DayKey = (typeof DAY_KEYS)[number];
 
+// ──────────────────────────────────────────────────────────────
+//  HELPER — compute the combined multiplicative event factor
+//  for a given year (uses mid-year month=6, same as applyEventsAnnual)
+// ──────────────────────────────────────────────────────────────
+function eventFactorForYear(year: number, events: ConnectedForecast["lrp"]["events"]): number {
+  const enabled = events.filter((e) => e.enabled);
+  let factor = 1;
+  for (const e of enabled) {
+    const f = sigmoidImpact(year, 6, e);
+    const direction = e.type === "positive" ? 1 : -1;
+    factor *= 1 + direction * e.peakImpact * f;
+  }
+  return factor;
+}
+
+// ──────────────────────────────────────────────────────────────
+//  HELPER — blend the transition from historical clean-baseline
+//  to trend projection over a short window to avoid a visible
+//  bump at the actual→forecast boundary.
+//
+//  blendWindow = number of years to smooth over (default 2).
+//  For years before the window  → 100% trend value
+//  For years inside the window  → weighted average
+//  The blend only affects forecast years immediately after the
+//  last actual; historical years use the trend value as-is
+//  (so the round-trip QC remains valid).
+// ──────────────────────────────────────────────────────────────
+function blendBoundary(
+  cleanBaseline: { year: number; value: number }[],
+  trendValues: Map<number, number>,
+  lastActualYear: number,
+  blendWindow: number = 2
+): Map<number, number> {
+  const blended = new Map<number, number>();
+  const lastClean = cleanBaseline.find((c) => c.year === lastActualYear)?.value ?? 0;
+
+  for (const [year, trendVal] of trendValues) {
+    if (year <= lastActualYear) {
+      // Historical: use pure trend (for QC comparison against actuals)
+      blended.set(year, trendVal);
+    } else if (year <= lastActualYear + blendWindow) {
+      // Transition zone: blend from last actual clean value to trend
+      const t = (year - lastActualYear) / (blendWindow + 1); // 0→1
+      const blendedVal = lastClean * (1 - t) + trendVal * t;
+      blended.set(year, blendedVal);
+    } else {
+      // Pure forecast: use trend as-is
+      blended.set(year, trendVal);
+    }
+  }
+  return blended;
+}
+
 interface DailyInternal {
   date: string;
   weekStart: string;
@@ -43,27 +96,93 @@ interface DailyInternal {
 export function compute(forecast: ConnectedForecast): ComputedForecastConnected {
   const startYear = parseInt(forecast.timeframe.historicalStart.split("-")[0]);
   const endYear = parseInt(forecast.timeframe.forecastEnd.split("-")[0]);
+  const lastActualYear = forecast.lrp.annualActuals[forecast.lrp.annualActuals.length - 1]?.year ?? ENGINE_NOW_YEAR - 1;
 
-  // STEP 1 — Trend
+  // ────────────────────────────────────────────────────────
+  //  STEP 1 — STRIP event impacts from actuals to get
+  //  a "clean" baseline that the trend algorithm can fit.
+  //
+  //  cleanBaseline = actuals / eventFactor
+  //
+  //  This removes the known event effects so the trend
+  //  captures only the underlying organic growth.
+  // ────────────────────────────────────────────────────────
+  const cleanBaseline: { year: number; value: number }[] = forecast.lrp.annualActuals.map(
+    ({ year, value }) => {
+      const ef = eventFactorForYear(year, forecast.lrp.events);
+      return { year, value: ef !== 0 ? value / ef : value };
+    }
+  );
+
+  // ────────────────────────────────────────────────────────
+  //  STEP 2 — FIT trend on the clean (event-free) baseline.
+  //  The trend now captures pure organic trajectory.
+  // ────────────────────────────────────────────────────────
   const fit = trend(
     forecast.lrp.selectedAlgorithm,
-    forecast.lrp.annualActuals,
+    cleanBaseline,
     endYear,
     forecast.lrp.algorithmParams,
     forecast.lrp.customizationCurve
   );
-  const annualBaselineMap = new Map<number, number>();
-  for (const a of forecast.lrp.annualActuals) annualBaselineMap.set(a.year, a.value);
-  for (const p of fit.projection) annualBaselineMap.set(p.year, p.value);
+
+  // Build a map of trend-fitted values for ALL years
+  const trendFittedMap = new Map<number, number>();
+  for (const a of cleanBaseline) trendFittedMap.set(a.year, a.value); // historical: use stripped actual
+  for (const p of fit.projection) trendFittedMap.set(p.year, p.value); // forecast: use trend projection
+
+  // Apply boundary blending for smooth actual→forecast handoff
+  const blendedBaseline = blendBoundary(cleanBaseline, trendFittedMap, lastActualYear, 2);
+
+  // Assemble the full annual baseline timeline
   const annualBaseline: { year: number; value: number }[] = [];
   for (let y = startYear; y <= endYear; y++) {
-    annualBaseline.push({ year: y, value: annualBaselineMap.get(y) ?? 0 });
+    annualBaseline.push({ year: y, value: blendedBaseline.get(y) ?? 0 });
   }
 
-  // STEP 2 — Events
+  // ────────────────────────────────────────────────────────
+  //  STEP 3 — REAPPLY events to the full timeline.
+  //
+  //  For historical years:
+  //    output = cleanBaseline × eventFactor
+  //           = (actuals / eventFactor) × eventFactor
+  //           = actuals  ← EXACT round-trip, blue line is immovable
+  //
+  //  For forecast years:
+  //    output = trendProjection × eventFactor
+  //           = organic trend shaped by future events
+  // ────────────────────────────────────────────────────────
   const annualEvented = applyEventsAnnual(annualBaseline, forecast.lrp.events);
 
-  // STEP 3 — Share cascade
+  // ────────────────────────────────────────────────────────
+  //  QC — Round-trip check: verify historical years match
+  //  actuals within floating-point tolerance.
+  //  Log warnings if drift exceeds threshold.
+  // ────────────────────────────────────────────────────────
+  const actualsMap = new Map(forecast.lrp.annualActuals.map((a) => [a.year, a.value]));
+  const roundTripDrifts: { year: number; actual: number; computed: number; driftPct: number }[] = [];
+  for (const ae of annualEvented) {
+    const actual = actualsMap.get(ae.year);
+    if (actual !== undefined && actual > 0) {
+      const driftPct = Math.abs(ae.value - actual) / actual;
+      if (driftPct > 1e-9) {
+        roundTripDrifts.push({
+          year: ae.year,
+          actual,
+          computed: ae.value,
+          driftPct,
+        });
+      }
+    }
+  }
+  if (roundTripDrifts.length > 0) {
+    console.warn(
+      "[compute] Round-trip QC FAILED — historical actuals not preserved after event strip/reapply:",
+      roundTripDrifts
+    );
+  }
+
+  // STEP 4 — Share cascade (unchanged)
   const classShareYear = interpolateAnchors(forecast.lrp.classShare, startYear, endYear);
   const productShareYear = interpolateAnchors(forecast.lrp.productShare, startYear, endYear);
   const annualVolume = annualEvented.map((e, i) => ({
@@ -71,7 +190,7 @@ export function compute(forecast: ConnectedForecast): ComputedForecastConnected 
     value: e.value * classShareYear[i].value * productShareYear[i].value,
   }));
 
-  // STEP 4 — Pricing
+  // STEP 5 — Pricing (unchanged)
   const grossPriceYear = interpolateAnchors(forecast.lrp.grossPrice, startYear, endYear);
   const gtnYear = interpolateAnchors(forecast.lrp.gtnRate, startYear, endYear);
   const annualDataPoints: AnnualDataPoint[] = annualVolume.map((v, i) => {
@@ -91,7 +210,7 @@ export function compute(forecast: ConnectedForecast): ComputedForecastConnected 
     };
   });
 
-  // STEP 5 — Decompose annual to monthly via ERDs (ALL years; exact)
+  // STEP 6 — Decompose annual to monthly via ERDs (ALL years; exact)
   const monthlyDataPoints: MonthlyDataPoint[] = [];
   for (const a of annualDataPoints) {
     const volMonths = annualToMonthly(a.volume, a.year, forecast.phasing.erdByMonth);
@@ -113,7 +232,7 @@ export function compute(forecast: ConnectedForecast): ComputedForecastConnected 
   }
   const monthlyByKey = new Map(monthlyDataPoints.map((m) => [m.month, m]));
 
-  // STEP 6 — Build daily distributions for current+next year (profile-weighted within month)
+  // STEP 7 — Build daily distributions for current+next year (profile-weighted within month)
   const dailyMap = new Map<string, DailyInternal>();
   const profileMap = new Map(forecast.phasing.weeklyProfileMap.map((p) => [p.weekStart, p.profileId]));
   const dailyProfiles = forecast.phasing.dailyProfiles;
@@ -125,9 +244,6 @@ export function compute(forecast: ConnectedForecast): ComputedForecastConnected 
     return dailyProfiles.find((p) => p.id === id) ?? standardProfile;
   }
 
-  // Generate weekly/daily grain across enough history to cover the maximum History Window (156 weeks ≈ 3 years)
-  // plus the forecast horizon. Earliest year is bounded by the first historical actual so we don't generate
-  // synthetic weekly data before the model has meaningful annual values.
   const earliestActualYear =
     forecast.lrp.annualActuals[0]?.year ?? ENGINE_NOW_YEAR - 3;
   const weeklyStartYear = Math.max(earliestActualYear, ENGINE_NOW_YEAR - 4);
@@ -171,7 +287,7 @@ export function compute(forecast: ConnectedForecast): ComputedForecastConnected 
     }
   }
 
-  // STEP 7 — Aggregate daily to weekly (initial, before STF overrides)
+  // STEP 8 — Aggregate daily to weekly (initial, before STF overrides)
   const weeklyMap = new Map<string, WeeklyDataPoint>();
   for (const d of dailyMap.values()) {
     let w = weeklyMap.get(d.weekStart);
@@ -195,7 +311,7 @@ export function compute(forecast: ConnectedForecast): ComputedForecastConnected 
     w.totalNetSales += d.netSales;
   }
 
-  // STEP 7.5 — Apply STF (short-horizon) events to weekly + scale daily proportionally
+  // STEP 8.5 — Apply STF (short-horizon) events to weekly + scale daily proportionally
   const stfEvents = forecast.stf.events ?? [];
   if (stfEvents.some((e) => e.enabled)) {
     for (const w of weeklyMap.values()) {
@@ -214,7 +330,7 @@ export function compute(forecast: ConnectedForecast): ComputedForecastConnected 
     }
   }
 
-  // STEP 8 — Apply STF overrides at week level (modify totalVolume/totalNetSales)
+  // STEP 9 — Apply STF overrides at week level (modify totalVolume/totalNetSales)
   const weeklyInputMap = new Map<string, (typeof forecast.stf.weeklyInputs)[number]>();
   for (const wi of forecast.stf.weeklyInputs) weeklyInputMap.set(`${wi.weekStart}|${wi.sku}`, wi);
 
@@ -228,7 +344,6 @@ export function compute(forecast: ConnectedForecast): ComputedForecastConnected 
     w.isActual = wd.getTime() <= cutoff.getTime();
     w.isPartial = wd.getTime() > cutoff.getTime() && wd.getTime() <= partial.getTime();
 
-    // Compute SKU breakdown from week total + STF overrides
     let weekTotalVol = 0;
     let weekTotalNet = 0;
     let weekTotalGross = 0;
@@ -237,10 +352,8 @@ export function compute(forecast: ConnectedForecast): ComputedForecastConnected 
     for (const sku of activeSkus) {
       const baseSkuShare = sku.defaultMixPct / totalActiveMix;
       const baseSkuVol = w.totalVolume * baseSkuShare;
-      // Find equivalent net/gross for this SKU
       const baseSkuNet = w.totalNetSales * baseSkuShare;
-      // Approximate SKU gross from week's average gross/volume ratio
-      const baseSkuGross = baseSkuNet > 0 ? baseSkuNet / Math.max(0.0001, 1 - 0.5825) : 0; // placeholder; recomputed below
+      const baseSkuGross = baseSkuNet > 0 ? baseSkuNet / Math.max(0.0001, 1 - 0.5825) : 0;
       const wi = weeklyInputMap.get(`${w.weekStart}|${sku.id}`);
 
       let vol = baseSkuVol;
@@ -273,14 +386,12 @@ export function compute(forecast: ConnectedForecast): ComputedForecastConnected 
       weekTotalGross += gross;
     }
 
-    // Update week totals based on SKU values (which may differ from initial daily-summed totals if overrides applied)
     const oldTotalVol = w.totalVolume;
     const oldTotalNet = w.totalNetSales;
     w.totalVolume = weekTotalVol;
     w.totalNetSales = weekTotalNet;
     w.source = w.isActual ? "stf-actual" : anyOverride ? "stf-forecast" : "lrp-derived";
 
-    // Scale daily values proportionally to maintain daily-to-weekly consistency
     if (oldTotalVol > 0 && Math.abs(weekTotalVol - oldTotalVol) > 1e-6) {
       const fVol = weekTotalVol / oldTotalVol;
       const fNet = oldTotalNet === 0 ? 1 : weekTotalNet / oldTotalNet;
@@ -294,7 +405,7 @@ export function compute(forecast: ConnectedForecast): ComputedForecastConnected 
     }
   }
 
-  // STEP 9 — Re-aggregate daily to monthly (current+next year only) so STF overrides bubble up
+  // STEP 10 — Re-aggregate daily to monthly (current+next year only) so STF overrides bubble up
   for (const y of weeklyYears) {
     for (let m = 1; m <= 12; m++) {
       const mk = `${y}-${String(m).padStart(2, "0")}`;
@@ -321,7 +432,7 @@ export function compute(forecast: ConnectedForecast): ComputedForecastConnected 
     }
   }
 
-  // STEP 10 — Re-aggregate monthly to annual for current+next year (STF overrides bubble up to annual)
+  // STEP 11 — Re-aggregate monthly to annual for current+next year (STF overrides bubble up to annual)
   for (const y of weeklyYears) {
     let v = 0,
       net = 0,
@@ -342,7 +453,7 @@ export function compute(forecast: ConnectedForecast): ComputedForecastConnected 
     }
   }
 
-  // STEP 11 — Convert dailyMap to DailyDataPoint[] (current year only)
+  // STEP 12 — Convert dailyMap to DailyDataPoint[] (current year only)
   const dailyDataPoints: DailyDataPoint[] = [];
   for (const d of dailyMap.values()) {
     if (d.year === ENGINE_NOW_YEAR) {
@@ -359,7 +470,7 @@ export function compute(forecast: ConnectedForecast): ComputedForecastConnected 
 
   const weeklyDataPoints = Array.from(weeklyMap.values()).sort((a, b) => a.weekStart.localeCompare(b.weekStart));
 
-  // STEP 12 — LRP-STF reconciliation (use clean LRP-pure values)
+  // STEP 13 — LRP-STF reconciliation (use clean LRP-pure values)
   const lrpStfDelta: ComputedForecastConnected["lrpStfDelta"] = [];
   const lrpPureMonthly = new Map<string, number>();
   for (const a of annualVolume.map((v, i) => ({
@@ -425,7 +536,7 @@ export function compute(forecast: ConnectedForecast): ComputedForecastConnected 
     actualWeight: totalWeeksY === 0 ? 0 : actualWeeksY / totalWeeksY,
   });
 
-  // STEP 13 — Grain consistency
+  // STEP 14 — Grain consistency
   const grainConsistency = computeGrainConsistency(
     annualDataPoints,
     monthlyDataPoints,
@@ -434,13 +545,13 @@ export function compute(forecast: ConnectedForecast): ComputedForecastConnected 
     Array.from(dailyMap.values())
   );
 
-  // STEP 14 — Trend diagnostics
+  // STEP 15 — Trend diagnostics (now reflects trend fit on CLEAN baseline)
   const trendDiagnostics: ComputedForecastConnected["trendDiagnostics"] = {
     fitStart: `${forecast.lrp.annualActuals[0]?.year ?? startYear}-01-01`,
     fitEnd: `${forecast.lrp.annualActuals[forecast.lrp.annualActuals.length - 1]?.year ?? startYear}-12-31`,
     algorithmsCompared:
       fit.comparisons ??
-      computeAllAlgorithmComparisons(forecast.lrp.annualActuals, endYear, forecast.lrp.algorithmParams),
+      computeAllAlgorithmComparisons(cleanBaseline, endYear, forecast.lrp.algorithmParams),
     selectedAlgorithm: fit.algorithmRun,
   };
 
@@ -454,6 +565,11 @@ export function compute(forecast: ConnectedForecast): ComputedForecastConnected 
     grainConsistency,
     lrpStfDelta,
     trendDiagnostics,
+    // NEW: expose round-trip QC for frontend display
+    roundTripQC: {
+      passed: roundTripDrifts.length === 0,
+      drifts: roundTripDrifts,
+    },
   };
 }
 
@@ -474,8 +590,6 @@ function computeGrainConsistency(
       if (drift > mtaMax) mtaMax = drift;
     }
   }
-  // Weekly to monthly: aggregate weekly values back to months using actual daily allocation
-  // (boundary weeks contribute their daily sums to the appropriate month)
   let wtmMax = 0;
   const monthly_byKey = new Map(monthly.map((m) => [m.month, m]));
   const monthAggFromDaily = new Map<string, number>();
@@ -491,8 +605,6 @@ function computeGrainConsistency(
       if (drift > wtmMax) wtmMax = drift;
     }
   }
-  // Daily to weekly: only check weeks whose 7 days all sit inside the current year
-  // (boundary weeks straddling year edges have intentionally-partial daily coverage)
   let dtwMax = 0;
   const dayWeek = new Map<string, number>();
   const dayCount = new Map<string, number>();
@@ -527,6 +639,7 @@ function computeAllAlgorithmComparisons(
     "holt-winter-mul",
     "sma-auto",
   ];
+  // NOTE: comparisons now run on clean (event-stripped) baseline
   return algorithms.map((alg) => {
     const r = trend(alg, actuals, endYear, params);
     return { algorithm: alg, rsq: r.rsq, mape: r.mape, rmse: r.rmse };
