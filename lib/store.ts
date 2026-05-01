@@ -545,32 +545,33 @@ export const useStore = create<AppStore>()(
         scheduleRecompute(get);
       },
       clearSkuMixOverrides: () => {
-        set((state) => ({
-          forecast: {
-            ...state.forecast,
-            stf: {
-              ...state.forecast.stf,
-              weeklyInputs: state.forecast.stf.weeklyInputs
-                .map((wi) => {
-                  if (wi.skuMixOverride === undefined) return wi;
-                  const next = { ...wi };
-                  delete (next as Record<string, unknown>).skuMixOverride;
-                  return next;
-                })
-                // Drop entries that are now empty (no fields set)
-                .filter((wi) =>
-                  wi.override !== undefined ||
-                  wi.holidayAdjPct !== undefined ||
-                  wi.eventImpactUnits !== undefined ||
-                  wi.skuMixOverride !== undefined ||
-                  wi.nfsUnits !== undefined ||
-                  wi.dohTargetOverride !== undefined ||
-                  wi.grossPriceOverride !== undefined ||
-                  wi.tradeDiscountOverride !== undefined ||
-                  wi.reserveRateOverride !== undefined
-                ),
-          },
-        }));
+        set((state) => {
+          const cleaned = state.forecast.stf.weeklyInputs
+            .map((wi) => {
+              if (wi.skuMixOverride === undefined) return wi;
+              const { skuMixOverride: _drop, ...rest } = wi;
+              return rest;
+            })
+            .filter((wi) => {
+              return (
+                wi.override !== undefined ||
+                wi.holidayAdjPct !== undefined ||
+                wi.eventImpactUnits !== undefined ||
+                wi.skuMixOverride !== undefined ||
+                wi.nfsUnits !== undefined ||
+                wi.dohTargetOverride !== undefined ||
+                wi.grossPriceOverride !== undefined ||
+                wi.tradeDiscountOverride !== undefined ||
+                wi.reserveRateOverride !== undefined
+              );
+            });
+          return {
+            forecast: {
+              ...state.forecast,
+              stf: { ...state.forecast.stf, weeklyInputs: cleaned },
+            },
+          };
+        });
         scheduleRecompute(get);
       },
 
