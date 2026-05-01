@@ -8,9 +8,57 @@ import { formatNumber } from "@/lib/format";
 
 type ChannelKey = "wholesaler" | "specialty-pharmacy";
 
-const CHANNEL_META: Record<ChannelKey, { label: string; areaColor: string; lineColor: string; targetDoh: number }> = {
-  "wholesaler": { label: "Wholesaler", areaColor: "#004466", lineColor: "#171717", targetDoh: 18 },
-  "specialty-pharmacy": { label: "Specialty Pharmacy", areaColor: "#0A5C82", lineColor: "#C1423B", targetDoh: 7 },
+interface SubAccount {
+  name: string;
+  units: number;
+  doh: number;
+}
+
+interface ChannelMeta {
+  label: string;
+  areaColor: string;
+  lineColor: string;
+  targetDoh: number;
+  startingUnits: number;
+  averageDoh: number;
+  status: "HEALTHY" | "LOW" | "CRITICAL";
+  statusColor: "success" | "warning" | "danger";
+  alert?: string;
+  subAccounts: SubAccount[];
+}
+
+const CHANNEL_META: Record<ChannelKey, ChannelMeta> = {
+  "wholesaler": {
+    label: "Wholesaler",
+    areaColor: "#004466",
+    lineColor: "#171717",
+    targetDoh: 18,
+    startingUnits: 148000,
+    averageDoh: 20.1,
+    status: "HEALTHY",
+    statusColor: "success",
+    subAccounts: [
+      { name: "McKesson", units: 62000, doh: 22.4 },
+      { name: "Cardinal", units: 48000, doh: 19.8 },
+      { name: "Cencora", units: 38000, doh: 17.5 },
+    ],
+  },
+  "specialty-pharmacy": {
+    label: "Specialty Pharmacy",
+    areaColor: "#0A5C82",
+    lineColor: "#C1423B",
+    targetDoh: 7,
+    startingUnits: 48000,
+    averageDoh: 6.5,
+    status: "LOW",
+    statusColor: "warning",
+    alert: "Accredo at 4.8 days — below 7-day target. Replenishment recommended.",
+    subAccounts: [
+      { name: "Accredo", units: 22000, doh: 4.8 },
+      { name: "CVS Specialty", units: 16000, doh: 7.2 },
+      { name: "Option Care", units: 10000, doh: 8.6 },
+    ],
+  },
 };
 
 export function InventoryDohView() {
@@ -19,25 +67,32 @@ export function InventoryDohView() {
   const win = useForecastWindow();
   const [channel, setChannel] = useState<ChannelKey>("wholesaler");
 
+  // Starting on-hand: prefer the seed value for this channel, fall back to demo number.
   const startingUnits = useMemo(() => {
-    return inventoryStart
+    const seedSum = inventoryStart
       .filter((t) => t.tier === channel)
       .reduce((sum, t) => sum + t.units, 0);
+    return seedSum > 0 ? seedSum : CHANNEL_META[channel].startingUnits;
   }, [inventoryStart, channel]);
+
+  const meta = CHANNEL_META[channel];
+
+  // The chart is a demand-cover view: starting inventory ÷ implied daily outflow ≈ target DOH.
+  // baselineDailyOuts is calibrated so DOH starts near the channel's average and drifts mildly.
+  const baselineDailyOuts = startingUnits / meta.averageDoh;
 
   const projection = useMemo(() => {
     if (!computed) return [];
     let units = startingUnits;
-    const driftAmplitude = channel === "wholesaler" ? 4000 : 1800;
-    const driftBias = channel === "wholesaler" ? 1500 : 800;
-    const channelOutShare = channel === "wholesaler" ? 0.72 : 0.28;
+    const driftAmplitude = startingUnits * 0.06; // ±6% noise on units
+    // Slight downward bias so the line trends toward the target (replenishment story)
+    const downwardBias = startingUnits * 0.005;
     return computed.weekly
       .filter((w) => w.weekStart >= win.windowStart && w.weekStart <= win.windowEnd)
       .map((w, i) => {
-        units += Math.sin(i * (channel === "wholesaler" ? 0.6 : 0.5)) * driftAmplitude - driftBias;
+        units += Math.sin(i * 0.55) * driftAmplitude - downwardBias;
         const safeUnits = Math.max(0, units);
-        const channelDailyOuts = (w.totalVolume * channelOutShare) / 7;
-        const doh = safeUnits / Math.max(1, channelDailyOuts);
+        const doh = safeUnits / baselineDailyOuts;
         return {
           week: w.weekStart,
           units: safeUnits,
@@ -45,12 +100,11 @@ export function InventoryDohView() {
           isActual: w.isActual,
         };
       });
-  }, [computed, startingUnits, channel, win]);
+  }, [computed, startingUnits, baselineDailyOuts, win]);
 
-  const meta = CHANNEL_META[channel];
-  const maxDoh = projection.reduce((m, p) => Math.max(m, p.doh), 0);
-  const maxUnits = projection.reduce((m, p) => Math.max(m, p.units), 0);
-  const dohDomainMax = Math.max(meta.targetDoh * 1.5, Math.ceil(maxDoh / 5) * 5 + 5);
+  const maxUnits = projection.reduce((m, p) => Math.max(m, p.units), startingUnits);
+  const maxDoh = projection.reduce((m, p) => Math.max(m, p.doh), meta.targetDoh);
+  const dohDomainMax = Math.ceil(Math.max(meta.targetDoh * 1.6, maxDoh + 2) / 5) * 5;
 
   return (
     <div className="space-y-4">
@@ -59,10 +113,10 @@ export function InventoryDohView() {
           <div>
             <h3 className="font-heading text-h3 text-secondary">Channel Inventory & Days on Hand</h3>
             <p className="text-xs text-muted mt-1 max-w-2xl">
-              Projected on-hand inventory units (filled area, left axis) and Days-on-Hand cover (line, right axis) for the
-              selected channel. DOH = on-hand units ÷ projected daily outflow. Inventory units drift week-to-week as the
-              channel ships product through to providers; the line crossing below the target band signals a replenishment
-              risk.
+              Filled area (left axis) is on-hand inventory units in the selected channel. The line (right axis) is
+              <strong> Days on Hand</strong> — how many days of demand the on-hand cover represents at the channel&apos;s
+              implied run-rate. The dashed green line marks the target DOH; the line drifting below it signals a
+              replenishment risk.
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -124,88 +178,57 @@ export function InventoryDohView() {
           </ResponsiveContainer>
         </div>
         <p className="text-xs text-muted mt-2">
-          Showing <strong>{meta.label}</strong> · Starting on-hand: <span className="font-mono">{formatNumber(startingUnits)} units</span>
-          {" "}· Target DOH: <span className="font-mono">{meta.targetDoh} days</span>.
-          Daily outflow assumes ~{Math.round((channel === "wholesaler" ? 0.72 : 0.28) * 100)}% of total weekly OUTs flow through this channel.
+          <strong>{meta.label}</strong> — starting on-hand <span className="font-mono">{formatNumber(startingUnits)} units</span>,
+          implied daily outflow <span className="font-mono">{formatNumber(Math.round(baselineDailyOuts))} units/day</span>,
+          target DOH <span className="font-mono">{meta.targetDoh} days</span>.
         </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <TierCard
-          name="Wholesaler"
-          units={148000}
-          doh={20.1}
-          status="HEALTHY"
-          color="success"
-          subItems={[
-            { name: "McKesson", units: 62000 },
-            { name: "Cardinal", units: 48000 },
-            { name: "Cencora", units: 38000 },
-          ]}
-        />
-        <TierCard
-          name="Specialty Pharmacy"
-          units={48000}
-          doh={6.5}
-          status="LOW"
-          color="warning"
-          alert="Accredo DOH approaching critical threshold"
-          subItems={[
-            { name: "Accredo", units: 22000 },
-            { name: "CVS Specialty", units: 16000 },
-            { name: "Option Care", units: 10000 },
-          ]}
-        />
+        <ChannelCard meta={CHANNEL_META["wholesaler"]} />
+        <ChannelCard meta={CHANNEL_META["specialty-pharmacy"]} />
       </div>
     </div>
   );
 }
 
-function TierCard({
-  name,
-  units,
-  doh,
-  status,
-  color,
-  subItems,
-  alert,
-}: {
-  name: string;
-  units: number;
-  doh: number;
-  status: string;
-  color: "success" | "warning" | "danger";
-  subItems?: { name: string; units: number }[];
-  alert?: string;
-}) {
-  const cls = color === "success" ? "pill-success" : color === "warning" ? "pill-warning" : "pill-danger";
+function ChannelCard({ meta }: { meta: ChannelMeta }) {
+  const cls =
+    meta.statusColor === "success" ? "pill-success" : meta.statusColor === "warning" ? "pill-warning" : "pill-danger";
   return (
     <div className="card">
       <div className="flex justify-between items-start">
         <div>
-          <div className="caption text-muted">{name}</div>
-          <div className="font-heading text-h3 text-secondary mt-1">{formatNumber(units)}</div>
-          <div className="text-xs text-muted">DOH {doh.toFixed(1)}</div>
+          <div className="caption text-muted">{meta.label}</div>
+          <div className="font-heading text-h3 text-secondary mt-1">{formatNumber(meta.startingUnits)}</div>
+          <div className="text-xs text-muted">DOH {meta.averageDoh.toFixed(1)} · target {meta.targetDoh}</div>
         </div>
-        <span className={cls}>{status}</span>
+        <span className={cls}>{meta.status}</span>
       </div>
-      {subItems && (
-        <ul className="text-xs mt-3 space-y-1 text-muted">
-          {subItems.map((s) => (
+      <ul className="text-xs mt-3 space-y-1">
+        {meta.subAccounts.map((s) => {
+          const belowTarget = s.doh < meta.targetDoh;
+          return (
             <li key={s.name} className="flex justify-between">
-              <span>{s.name}</span>
-              <span className="font-mono">{formatNumber(s.units)}</span>
+              <span className="text-muted">{s.name}</span>
+              <span className="flex items-center gap-3 font-mono">
+                <span>{formatNumber(s.units)}u</span>
+                <span className={belowTarget ? "text-danger font-semibold" : "text-foreground"}>
+                  DOH {s.doh.toFixed(1)}
+                </span>
+              </span>
             </li>
-          ))}
-        </ul>
-      )}
-      {alert && (
+          );
+        })}
+      </ul>
+      {meta.alert && (
         <p
           className={
-            "text-xs mt-3 p-2 rounded " + (color === "danger" ? "bg-danger/10 text-danger" : "bg-warning/10 text-warning")
+            "text-xs mt-3 p-2 rounded " +
+            (meta.statusColor === "danger" ? "bg-danger/10 text-danger" : "bg-warning/10 text-warning")
           }
         >
-          ⚠ {alert}
+          ⚠ {meta.alert}
         </p>
       )}
     </div>

@@ -45,16 +45,47 @@ export function VarianceMonitor() {
       });
   }, [computed]);
 
+  // Rolling STF-vs-LRP variance: (Σ STF − Σ LRP-derived) / Σ LRP-derived over a window.
+  // Uses the same LRP-derived weekly series as the overlay above (monthly ÷ weeksInMonth)
+  // so the metric matches the section's definition and aligns with what the user sees.
   const chartData = useMemo(() => {
     if (!computed) return [];
-    const actuals = computed.weekly.filter((w) => w.isActual).slice(-26);
-    return actuals.map((w, i) => ({
-      week: w.weekStart,
-      r4: i >= 3 ? rollingPct(actuals.slice(i - 3, i + 1)) : 0,
-      r13: i >= 12 ? rollingPct(actuals.slice(i - 12, i + 1)) : 0,
-      r26: i >= 25 ? rollingPct(actuals.slice(0, i + 1)) : 0,
+    const actualPairs = computed.weekly
+      .filter((w) => w.isActual)
+      .slice(-26)
+      .map((w) => {
+        const monthly = computed.monthly.find((m) => m.month === w.month);
+        const weeksInMonth = computed.weekly.filter((ww) => ww.month === w.month).length || 1;
+        const lrp = monthly ? monthly.netSales / weeksInMonth : 0;
+        return { week: w.weekStart, stf: w.totalNetSales, lrp };
+      });
+
+    function variancePct(window: typeof actualPairs): number {
+      if (window.length === 0) return 0;
+      let stfSum = 0;
+      let lrpSum = 0;
+      for (const p of window) {
+        stfSum += p.stf;
+        lrpSum += p.lrp;
+      }
+      if (lrpSum === 0) return 0;
+      return (stfSum - lrpSum) / lrpSum;
+    }
+
+    return actualPairs.map((w, i) => ({
+      week: w.week,
+      r4: i >= 3 ? variancePct(actualPairs.slice(i - 3, i + 1)) : 0,
+      r13: i >= 12 ? variancePct(actualPairs.slice(i - 12, i + 1)) : 0,
+      r26: i >= 25 ? variancePct(actualPairs.slice(0, i + 1)) : 0,
     }));
   }, [computed]);
+
+  // Latest rolling-variance values for the labels under the chart
+  const latestVariance = useMemo(() => {
+    if (chartData.length === 0) return { r4: 0, r13: 0 };
+    const last = chartData[chartData.length - 1];
+    return { r4: last.r4 ?? 0, r13: last.r13 ?? 0 };
+  }, [chartData]);
 
   const evt = events[0];
 
@@ -120,16 +151,20 @@ export function VarianceMonitor() {
               </LineChart>
             </ResponsiveContainer>
           </div>
-          {evt && (
-            <div className="text-xs mt-3 space-y-1 font-mono">
-              <div>
-                4-week: <span className={evt.severity !== "info" ? "text-danger" : "text-success"}>{formatPct(evt.rolling4WeekVariancePct, 2)}</span>
-              </div>
-              <div>
-                13-week: <span className="text-success">{formatPct(evt.rolling13WeekVariancePct, 2)}</span>
-              </div>
+          <div className="text-xs mt-3 space-y-1 font-mono">
+            <div>
+              4-week:{" "}
+              <span className={Math.abs(latestVariance.r4) > 0.05 ? "text-danger" : Math.abs(latestVariance.r4) > 0.02 ? "text-warning" : "text-success"}>
+                {formatPct(latestVariance.r4, 2)}
+              </span>
             </div>
-          )}
+            <div>
+              13-week:{" "}
+              <span className={Math.abs(latestVariance.r13) > 0.05 ? "text-danger" : Math.abs(latestVariance.r13) > 0.02 ? "text-warning" : "text-success"}>
+                {formatPct(latestVariance.r13, 2)}
+              </span>
+            </div>
+          </div>
         </div>
 
         {/* Card 2.2 — Period Reconciliation */}
@@ -205,10 +240,3 @@ export function VarianceMonitor() {
   );
 }
 
-function rollingPct(weeks: { weekStart: string; totalNetSales: number }[]): number {
-  if (weeks.length === 0) return 0;
-  const total = weeks.reduce((s, w) => s + w.totalNetSales, 0);
-  const avg = total / weeks.length;
-  if (avg === 0) return 0;
-  return (weeks[weeks.length - 1].totalNetSales - avg) / avg;
-}

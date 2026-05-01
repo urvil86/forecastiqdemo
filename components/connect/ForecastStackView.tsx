@@ -66,24 +66,15 @@ export function ForecastStackView() {
           <div className="flex flex-col flex-shrink-0 pr-3" style={{ width: 110 }}>
             <div style={{ height: AXIS_HEIGHT }} />
             <div className="caption text-muted flex items-center justify-end pr-1" style={{ height: STRIP_HEIGHT }}>
-              <div className="text-right leading-tight">
-                Strip A<br />
-                <span className="font-normal normal-case tracking-normal">Annual LRP</span>
-              </div>
+              <div className="text-right leading-tight font-normal normal-case tracking-normal">Annual LRP</div>
             </div>
             <div style={{ height: CAPTION_HEIGHT }} />
             <div className="caption text-muted flex items-center justify-end pr-1" style={{ height: STRIP_HEIGHT }}>
-              <div className="text-right leading-tight">
-                Strip B<br />
-                <span className="font-normal normal-case tracking-normal">Monthly LRP</span>
-              </div>
+              <div className="text-right leading-tight font-normal normal-case tracking-normal">Monthly LRP</div>
             </div>
             <div style={{ height: CAPTION_HEIGHT }} />
             <div className="caption text-muted flex items-center justify-end pr-1" style={{ height: STRIP_HEIGHT }}>
-              <div className="text-right leading-tight">
-                Strip C<br />
-                <span className="font-normal normal-case tracking-normal">Weekly STF</span>
-              </div>
+              <div className="text-right leading-tight font-normal normal-case tracking-normal">Weekly STF</div>
             </div>
             <div style={{ height: AXIS_HEIGHT }} />
           </div>

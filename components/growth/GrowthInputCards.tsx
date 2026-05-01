@@ -53,8 +53,19 @@ export function SetupCard({
             onChange={(e) => update("budgetUsd", parseInt(e.target.value))}
             className="w-full accent-primary"
           />
-          <div className="flex justify-between text-[10px] text-muted">
-            <span>$1M</span><span>$10M</span><span>$25M</span><span>$50M</span>
+          <div className="relative h-4 mt-1 text-[10px] text-muted">
+            {[1, 10, 25, 50].map((m) => {
+              const pct = ((m - 1) / (50 - 1)) * 100;
+              return (
+                <span
+                  key={m}
+                  className="absolute top-0 -translate-x-1/2"
+                  style={{ left: `${pct}%` }}
+                >
+                  ${m}M
+                </span>
+              );
+            })}
           </div>
           <div className="caption text-muted mt-4 mb-1">Objective</div>
           <Radio name="obj" value="max-revenue" current={form.objective} onChange={(v) => update("objective", v)}

@@ -486,7 +486,7 @@ function DailySalesPatternCard() {
       <p className="text-xs text-muted mt-3">
         <strong>Where these come from:</strong> profiles are user-supplied, not detected from history (the engine only ingests
         annual actuals). Default seed reflects a Wednesday-heavy infusion pattern. Edit any cell above and the daily distribution
-        in <em>Build → Naive OUTs (granularity = Daily)</em> recomputes within 100ms.
+        in <em>Build → Baseline OUTs (granularity = Daily)</em> recomputes within 100ms.
       </p>
     </div>
   );

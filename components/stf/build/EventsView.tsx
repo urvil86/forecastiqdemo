@@ -24,7 +24,7 @@ export function EventsView() {
           <h3 className="font-heading text-h3 text-secondary">STF Events (short-horizon)</h3>
           <p className="text-sm text-muted">
             Operational events with a 4–12 week impact window. Edits apply at the <strong>weekly</strong> level on top of LRP cascade
-            and are captured in <em>Build → Naive OUTs</em> within 100ms.
+            and are captured in <em>Build → Baseline OUTs</em> within 100ms.
           </p>
         </div>
         <button onClick={addStfEvent} className="btn-secondary flex items-center gap-1">

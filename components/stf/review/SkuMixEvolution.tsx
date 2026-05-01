@@ -67,7 +67,7 @@ export function SkuMixEvolution() {
 
   return (
     <div>
-      <SectionHeader title="SKU Mix · Last 13 Weeks + 13 Forward" subtitle="Stacked area showing relative SKU contribution. Stable mix means commercial strategy is intact." />
+      <SectionHeader title="SKU Mix Evolution" subtitle="Stacked area showing relative SKU contribution. Stable mix means commercial strategy is intact." />
       <div className="card">
         <div className="h-72">
           <ResponsiveContainer>

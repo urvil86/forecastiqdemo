@@ -69,10 +69,7 @@ export function SeekToForecast() {
 
   return (
     <div>
-      <SectionHeader
-        title="Seek to Forecast — Set a target, see what it requires ★"
-        subtitle="Enter a target annual net sales for any year. The system computes the monthly trajectory, decomposes to weekly, and identifies which weeks require operational intervention."
-      />
+      <SectionHeader title="Seek to Forecast" />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div className="card">

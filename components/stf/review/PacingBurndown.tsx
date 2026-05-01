@@ -22,7 +22,7 @@ export function PacingBurndown() {
       />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <BurndownCard
-          title="Month-to-date"
+          title={`Month-to-date · ${month.periodLabel}`}
           data={month.data}
           xKey="day"
           xLabel="Day"
@@ -30,7 +30,7 @@ export function PacingBurndown() {
           todayMarker={month.todayDay}
         />
         <BurndownCard
-          title="Quarter-to-date"
+          title={`Quarter-to-date · ${quarter.periodLabel}`}
           data={quarter.data}
           xKey="week"
           xLabel="Week"
@@ -143,6 +143,7 @@ function buildMonthBurndown(computed: ComputedSlim | null, _cutoff: string) {
   return {
     data,
     todayDay,
+    periodLabel: "April 2026",
     summary: [
       { label: "MTD Actual", value: `$${mtdActual.toFixed(0)}M` },
       { label: "MTD Target", value: `$${mtdTarget.toFixed(0)}M` },
@@ -201,6 +202,7 @@ function buildQuarterBurndown(computed: ComputedSlim | null, _cutoff: string) {
   return {
     data,
     todayWeek: `W${todayWeek}`,
+    periodLabel: "Q2 2026",
     summary: [
       { label: "QTD Actual", value: `$${qtdActual.toFixed(0)}M` },
       { label: "QTD Target", value: `$${qtdTarget.toFixed(0)}M` },

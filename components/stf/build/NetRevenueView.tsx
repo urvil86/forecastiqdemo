@@ -52,12 +52,12 @@ export function NetRevenueView() {
       "Week",
       "Type",
       "SKU",
-      "Naive OUTs",
+      "Baseline OUTs",
       "Evented OUTs",
       "Avg 6wk",
       "Mix %",
       "SKU Volume",
-      "Naive INs",
+      "Baseline INs",
       "Total INs",
       "Gross Price",
       "Trade Discount",
@@ -134,12 +134,12 @@ export function NetRevenueView() {
             <th>Week</th>
             <th>Type</th>
             <th>SKU</th>
-            <th>Naive OUTs</th>
+            <th>Baseline OUTs</th>
             <th>Evented OUTs</th>
             <th>Avg 6wk</th>
             <th>Mix %</th>
             <th>SKU Vol</th>
-            <th>Naive INs</th>
+            <th>Baseline INs</th>
             <th>Total INs</th>
             <th>Gross Price</th>
             <th>Trade Disc</th>

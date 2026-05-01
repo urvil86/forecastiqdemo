@@ -15,16 +15,25 @@ export default function StfPage() {
 
   return (
     <div className="p-8">
-      <div className="flex items-center justify-between mb-2">
-        <div>
-          <h1 className="font-heading text-h2 text-secondary">{forecast.brand} {forecast.geography} — STF</h1>
-          <p className="text-xs text-muted mt-1">
-            Actuals Cutoff: <span className="font-mono">{forecast.stf.actualsCutoffDate}</span> · Latest Partial:{" "}
-            <span className="font-mono">{forecast.stf.latestPartialDate}</span> · v{forecast.version} · {forecast.versionLabel}
-          </p>
+      <div className="flex items-center justify-between mb-2 flex-wrap gap-3">
+        <div className="flex items-center gap-4 flex-wrap">
+          <h1 className="font-heading text-h2 text-secondary">Short Term Forecast</h1>
+          <select
+            value={forecast.brand}
+            disabled
+            className="input-cell !font-sans text-sm"
+            title="Multi-brand selection available in production"
+          >
+            <option value="Ocrevus">Ocrevus</option>
+          </select>
         </div>
         <Link href="/stf/connect" className="btn-secondary">Compare LRP vs STF →</Link>
       </div>
+      <p className="text-xs text-muted">
+        {forecast.brand} {forecast.geography} · Actuals Cutoff:{" "}
+        <span className="font-mono">{forecast.stf.actualsCutoffDate}</span> · Latest Partial:{" "}
+        <span className="font-mono">{forecast.stf.latestPartialDate}</span> · v{forecast.version} · {forecast.versionLabel}
+      </p>
 
       <div className="flex items-center gap-2 mb-6 mt-4 border-b border-border">
         <TabButton active={zone === "setup"} onClick={() => setZone("setup")}>Setup</TabButton>

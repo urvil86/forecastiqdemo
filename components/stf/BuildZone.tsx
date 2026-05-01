@@ -11,7 +11,7 @@ import { NetRevenueView } from "./build/NetRevenueView";
 
 const SUBVIEWS = [
   { id: "trend", label: "Trend Selection", priority: true },
-  { id: "naive-outs", label: "Naive OUTs", priority: true },
+  { id: "naive-outs", label: "Baseline OUTs", priority: true },
   { id: "holiday", label: "Holiday Adjustments", priority: true },
   { id: "events", label: "Events" },
   { id: "nfs", label: "NFS / Samples" },
