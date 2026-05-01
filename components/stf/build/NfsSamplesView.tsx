@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useStore } from "@/lib/store";
 import { useForecastWindow } from "@/lib/useForecastWindow";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ReferenceLine } from "recharts";
@@ -12,6 +12,10 @@ export function NfsSamplesView() {
   const nfs = useStore((s) => s.forecast.stf.nfs);
   const updateNfs = useStore((s) => s.updateNfs);
   const skus = useStore((s) => s.forecast.stf.skus);
+  const horizonWeeks = useStore((s) => s.forecast.stf.horizonWeeks);
+  const weeklyInputs = useStore((s) => s.forecast.stf.weeklyInputs);
+  const applySkuMixCustomForWeeks = useStore((s) => s.applySkuMixCustomForWeeks);
+  const clearSkuMixOverrides = useStore((s) => s.clearSkuMixOverrides);
   const win = useForecastWindow();
 
   const sampleSku = skus.find((s) => s.category === "sample" && s.active);
@@ -58,8 +62,8 @@ export function NfsSamplesView() {
           <div>
             <h3 className="font-heading text-h3 text-secondary">Not-for-Sale Units</h3>
             <p className="text-sm text-muted">
-              Samples drive NBRx via conversion. Sample units come from the engine&apos;s active sample-SKU output;
-              PAP and Bridge scale alongside.
+              Sample units come from the engine&apos;s active sample-SKU output; PAP and Bridge scale alongside.
+              Forward NBRx contribution uses the seed conversion rates.
             </p>
           </div>
           <div className="text-right">
@@ -84,14 +88,13 @@ export function NfsSamplesView() {
         </div>
       </div>
       <div className="card">
-        <h4 className="font-heading text-h4 text-secondary mb-2">Calibration</h4>
-        <p className="text-xs text-muted mb-3">Baselines and sample-to-NBRx conversion rates.</p>
+        <h4 className="font-heading text-h4 text-secondary mb-2">Calibration · NFS Baselines</h4>
+        <p className="text-xs text-muted mb-3">Average weekly NFS units. Sample units come from the engine&apos;s active sample SKU; PAP and Bridge scale alongside.</p>
         <table className="data-table">
           <thead>
             <tr>
               <th>Category</th>
               <th>Avg Weekly Units</th>
-              <th>Conversion Rate</th>
               <th>Source</th>
             </tr>
           </thead>
@@ -103,15 +106,6 @@ export function NfsSamplesView() {
                   value={nfs.samplesPerWeek}
                   onChange={(v) => updateNfs("samplesPerWeek", v)}
                   format={formatNumber}
-                  className="input-cell w-20 text-right"
-                />
-              </td>
-              <td>
-                <EditableNumber
-                  value={nfs.samplesConversionRate}
-                  onChange={(v) => updateNfs("samplesConversionRate", v)}
-                  format={(v) => formatPct(v, 1)}
-                  parse={(s) => parseFloat(s.replace("%", "")) / 100}
                   className="input-cell w-20 text-right"
                 />
               </td>
@@ -127,15 +121,6 @@ export function NfsSamplesView() {
                   className="input-cell w-20 text-right"
                 />
               </td>
-              <td>
-                <EditableNumber
-                  value={nfs.papConversionRate}
-                  onChange={(v) => updateNfs("papConversionRate", v)}
-                  format={(v) => formatPct(v, 1)}
-                  parse={(s) => parseFloat(s.replace("%", "")) / 100}
-                  className="input-cell w-20 text-right"
-                />
-              </td>
               <td className="text-xs text-muted">Scales w/ samples</td>
             </tr>
             <tr>
@@ -148,19 +133,145 @@ export function NfsSamplesView() {
                   className="input-cell w-20 text-right"
                 />
               </td>
-              <td>
-                <EditableNumber
-                  value={nfs.bridgeConversionRate}
-                  onChange={(v) => updateNfs("bridgeConversionRate", v)}
-                  format={(v) => formatPct(v, 1)}
-                  parse={(s) => parseFloat(s.replace("%", "")) / 100}
-                  className="input-cell w-20 text-right"
-                />
-              </td>
               <td className="text-xs text-muted">Scales w/ samples</td>
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <SkuMixCalibrationCard
+        skus={skus}
+        horizonWeeks={horizonWeeks}
+        weeklyInputs={weeklyInputs}
+        onApply={applySkuMixCustomForWeeks}
+        onClear={clearSkuMixOverrides}
+      />
+    </div>
+  );
+}
+
+function SkuMixCalibrationCard({
+  skus,
+  horizonWeeks,
+  weeklyInputs,
+  onApply,
+  onClear,
+}: {
+  skus: { id: string; displayName: string; category: string; active: boolean; defaultMixPct: number }[];
+  horizonWeeks: number;
+  weeklyInputs: { weekStart: string; sku: string; skuMixOverride?: number }[];
+  onApply: (weeks: number, mixBySkuId: Record<string, number>) => void;
+  onClear: () => void;
+}) {
+  const activeSkus = skus.filter((s) => s.active);
+  const [draftMix, setDraftMix] = useState<Record<string, number>>(() =>
+    Object.fromEntries(activeSkus.map((s) => [s.id, s.defaultMixPct]))
+  );
+  const [applyWeeks, setApplyWeeks] = useState<number>(8);
+
+  const horizonOptions = [4, 8, 13, 26].filter((w) => w <= horizonWeeks);
+  if (!horizonOptions.includes(horizonWeeks)) horizonOptions.push(horizonWeeks);
+
+  const lockedWeeks = useMemo(() => {
+    const set = new Set<string>();
+    for (const wi of weeklyInputs) if (wi.skuMixOverride !== undefined) set.add(wi.weekStart);
+    return set.size;
+  }, [weeklyInputs]);
+
+  const draftSum = activeSkus.reduce((s, sku) => s + (draftMix[sku.id] ?? sku.defaultMixPct), 0);
+
+  function resetToDefault() {
+    setDraftMix(Object.fromEntries(activeSkus.map((s) => [s.id, s.defaultMixPct])));
+  }
+
+  return (
+    <div className="card">
+      <div className="flex items-baseline justify-between mb-2 flex-wrap gap-2">
+        <h4 className="font-heading text-h4 text-secondary">SKU Mix · Apply a New Mix Forward</h4>
+        <span className="text-xs text-muted">
+          {lockedWeeks > 0 ? `Locked for ${lockedWeeks} forward ${lockedWeeks === 1 ? "week" : "weeks"}` : "No mix lock applied"}
+        </span>
+      </div>
+      <p className="text-xs text-muted mb-3">
+        Edit the mix per active SKU below, choose how many forward weeks the new mix should apply, and click Apply. The
+        engine will use these values for the chosen window only — weeks outside the window keep using the default mix from
+        Setup. Useful for modeling a mid-horizon launch or competitive shift.
+      </p>
+      <table className="data-table">
+        <thead>
+          <tr>
+            <th>SKU</th>
+            <th>Category</th>
+            <th>Default Mix %</th>
+            <th>New Mix %</th>
+            <th>Δ vs default</th>
+          </tr>
+        </thead>
+        <tbody>
+          {activeSkus.map((sku) => {
+            const draft = draftMix[sku.id] ?? sku.defaultMixPct;
+            const delta = draft - sku.defaultMixPct;
+            return (
+              <tr key={sku.id}>
+                <td>{sku.displayName}</td>
+                <td className="capitalize">{sku.category}</td>
+                <td className="font-mono text-xs text-muted">{formatPct(sku.defaultMixPct, 1)}</td>
+                <td>
+                  <EditableNumber
+                    value={draft}
+                    onChange={(v) => setDraftMix((m) => ({ ...m, [sku.id]: v }))}
+                    format={(v) => formatPct(v, 1)}
+                    parse={(s) => parseFloat(s.replace("%", "")) / 100}
+                    className="input-cell w-20 text-right"
+                  />
+                </td>
+                <td className={"font-mono text-xs " + (Math.abs(delta) < 0.0005 ? "text-muted" : delta > 0 ? "text-success" : "text-danger")}>
+                  {Math.abs(delta) < 0.0005 ? "—" : `${delta > 0 ? "+" : ""}${(delta * 100).toFixed(1)}pp`}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <div className="flex items-center justify-between flex-wrap gap-3 mt-3 pt-3 border-t border-border">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="caption text-muted">Apply for next:</span>
+          <select
+            value={applyWeeks}
+            onChange={(e) => setApplyWeeks(parseInt(e.target.value))}
+            className="input-cell !font-sans text-sm"
+          >
+            {horizonOptions.map((w) => (
+              <option key={w} value={w}>{w === horizonWeeks ? `${w} weeks (full horizon)` : `${w} weeks`}</option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => onApply(applyWeeks, draftMix)}
+            className="btn-secondary !py-1 !px-3 text-xs"
+          >
+            Apply New Mix
+          </button>
+          <button
+            type="button"
+            onClick={resetToDefault}
+            className="btn-ghost !py-1 !px-3 text-xs"
+          >
+            Reset draft
+          </button>
+          {lockedWeeks > 0 && (
+            <button
+              type="button"
+              onClick={onClear}
+              className="btn-ghost !py-1 !px-3 text-xs"
+            >
+              Clear locked weeks
+            </button>
+          )}
+        </div>
+        <span className={"text-xs font-mono " + (Math.abs(draftSum - 1) < 0.005 ? "text-success" : "text-warning")}>
+          Draft sums to {(draftSum * 100).toFixed(1)}%{Math.abs(draftSum - 1) < 0.005 ? " ✓" : " (engine renormalizes to 100%)"}
+        </span>
       </div>
     </div>
   );

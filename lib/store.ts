@@ -75,6 +75,8 @@ interface AppStore {
 
   // SKU mix horizon — locks current defaultMixPct as a per-week override for the next N weeks
   applySkuMixForWeeks: (weeks: number) => void;
+  // Apply user-specified mix values for the next N weeks (instead of reading defaultMixPct)
+  applySkuMixCustomForWeeks: (weeks: number, mixBySkuId: Record<string, number>) => void;
   clearSkuMixOverrides: () => void;
 
   recompute: () => void;
@@ -503,6 +505,36 @@ export const useStore = create<AppStore>()(
                 next[idx] = { ...next[idx], skuMixOverride: sku.defaultMixPct };
               } else {
                 next.push({ weekStart, sku: sku.id, trendValue: 0, skuMixOverride: sku.defaultMixPct });
+              }
+            }
+          }
+          return {
+            forecast: { ...state.forecast, stf: { ...state.forecast.stf, weeklyInputs: next } },
+          };
+        });
+        scheduleRecompute(get);
+      },
+      applySkuMixCustomForWeeks: (weeks, mixBySkuId) => {
+        set((state) => {
+          const cutoff = new Date(state.forecast.stf.actualsCutoffDate);
+          const day = cutoff.getUTCDay();
+          const offsetToMon = day === 0 ? 1 : (8 - day) % 7 || 7;
+          const firstWeek = new Date(cutoff.getTime());
+          firstWeek.setUTCDate(firstWeek.getUTCDate() + offsetToMon);
+          const activeSkus = state.forecast.stf.skus.filter((s) => s.active);
+          const cleaned = state.forecast.stf.weeklyInputs.filter((wi) => wi.skuMixOverride === undefined);
+          const next = [...cleaned];
+          for (let i = 0; i < weeks; i++) {
+            const wd = new Date(firstWeek.getTime());
+            wd.setUTCDate(wd.getUTCDate() + i * 7);
+            const weekStart = wd.toISOString().slice(0, 10);
+            for (const sku of activeSkus) {
+              const mix = mixBySkuId[sku.id] ?? sku.defaultMixPct;
+              const idx = next.findIndex((wi) => wi.weekStart === weekStart && wi.sku === sku.id);
+              if (idx >= 0) {
+                next[idx] = { ...next[idx], skuMixOverride: mix };
+              } else {
+                next.push({ weekStart, sku: sku.id, trendValue: 0, skuMixOverride: mix });
               }
             }
           }
