@@ -1,84 +1,136 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useStore } from "@/lib/store";
 import { useForecastWindow } from "@/lib/useForecastWindow";
 import { ResponsiveContainer, ComposedChart, Area, Line, XAxis, YAxis, Tooltip, Legend, CartesianGrid, ReferenceLine } from "recharts";
 import { formatNumber } from "@/lib/format";
 
+type ChannelKey = "wholesaler" | "specialty-pharmacy";
+
+const CHANNEL_META: Record<ChannelKey, { label: string; areaColor: string; lineColor: string; targetDoh: number }> = {
+  "wholesaler": { label: "Wholesaler", areaColor: "#004466", lineColor: "#171717", targetDoh: 18 },
+  "specialty-pharmacy": { label: "Specialty Pharmacy", areaColor: "#0A5C82", lineColor: "#C1423B", targetDoh: 7 },
+};
+
 export function InventoryDohView() {
   const computed = useStore((s) => s.computed);
   const inventoryStart = useStore((s) => s.forecast.stf.inventoryStart);
   const win = useForecastWindow();
+  const [channel, setChannel] = useState<ChannelKey>("wholesaler");
 
-  const tierTotals = inventoryStart.reduce(
-    (acc, tier) => {
-      acc[tier.tier] = (acc[tier.tier] ?? 0) + tier.units;
-      return acc;
-    },
-    {} as Record<string, number>
-  );
+  const startingUnits = useMemo(() => {
+    return inventoryStart
+      .filter((t) => t.tier === channel)
+      .reduce((sum, t) => sum + t.units, 0);
+  }, [inventoryStart, channel]);
 
   const projection = useMemo(() => {
     if (!computed) return [];
-    let wholesaler = tierTotals["wholesaler"] ?? 0;
-    let sp = tierTotals["specialty-pharmacy"] ?? 0;
-    let hub = tierTotals["hub"] ?? 0;
+    let units = startingUnits;
+    const driftAmplitude = channel === "wholesaler" ? 4000 : 1800;
+    const driftBias = channel === "wholesaler" ? 1500 : 800;
+    const channelOutShare = channel === "wholesaler" ? 0.72 : 0.28;
     return computed.weekly
       .filter((w) => w.weekStart >= win.windowStart && w.weekStart <= win.windowEnd)
       .map((w, i) => {
-        // Inventory drift: small variations driven by week index (deterministic, not random)
-        wholesaler += Math.sin(i * 0.6) * 4000 - 1500;
-        sp += Math.cos(i * 0.5) * 1800 - 800;
-        hub += Math.sin(i * 1.1) * 600 - 250;
-        const dailyOuts = w.totalVolume / 7;
-        const dohW = wholesaler / Math.max(1, dailyOuts);
-        const dohS = sp / Math.max(1, dailyOuts);
-        const dohH = hub / Math.max(1, dailyOuts);
+        units += Math.sin(i * (channel === "wholesaler" ? 0.6 : 0.5)) * driftAmplitude - driftBias;
+        const safeUnits = Math.max(0, units);
+        const channelDailyOuts = (w.totalVolume * channelOutShare) / 7;
+        const doh = safeUnits / Math.max(1, channelDailyOuts);
         return {
           week: w.weekStart,
-          wholesaler: Math.max(0, wholesaler),
-          sp: Math.max(0, sp),
-          hub: Math.max(0, hub),
-          dohW,
-          dohS,
-          dohH,
+          units: safeUnits,
+          doh,
           isActual: w.isActual,
         };
       });
-  }, [computed, tierTotals, win]);
+  }, [computed, startingUnits, channel, win]);
+
+  const meta = CHANNEL_META[channel];
+  const maxDoh = projection.reduce((m, p) => Math.max(m, p.doh), 0);
+  const maxUnits = projection.reduce((m, p) => Math.max(m, p.units), 0);
+  const dohDomainMax = Math.max(meta.targetDoh * 1.5, Math.ceil(maxDoh / 5) * 5 + 5);
 
   return (
     <div className="space-y-4">
       <div className="card">
-        <div className="flex items-baseline justify-between mb-2">
-          <h3 className="font-heading text-h3 text-secondary">Three-Tier Inventory & DOH</h3>
-          <span className="text-xs text-muted">
-            {win.historyWeeks}w history + {win.horizonWeeks}w horizon
-          </span>
+        <div className="flex items-baseline justify-between mb-2 flex-wrap gap-3">
+          <div>
+            <h3 className="font-heading text-h3 text-secondary">Channel Inventory & Days on Hand</h3>
+            <p className="text-xs text-muted mt-1 max-w-2xl">
+              Projected on-hand inventory units (filled area, left axis) and Days-on-Hand cover (line, right axis) for the
+              selected channel. DOH = on-hand units ÷ projected daily outflow. Inventory units drift week-to-week as the
+              channel ships product through to providers; the line crossing below the target band signals a replenishment
+              risk.
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <label className="caption text-muted flex items-center gap-2">
+              Channel
+              <select
+                value={channel}
+                onChange={(e) => setChannel(e.target.value as ChannelKey)}
+                className="input-cell !font-sans"
+              >
+                <option value="wholesaler">Wholesaler</option>
+                <option value="specialty-pharmacy">Specialty Pharmacy</option>
+              </select>
+            </label>
+            <span className="text-xs text-muted">
+              {win.historyWeeks}w history + {win.horizonWeeks}w horizon
+            </span>
+          </div>
         </div>
         <div className="h-72">
           <ResponsiveContainer>
-            <ComposedChart data={projection}>
+            <ComposedChart data={projection} margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#E6E1D6" />
               <XAxis dataKey="week" tick={{ fontSize: 10 }} interval={Math.max(1, Math.floor(projection.length / 13))} />
-              <YAxis yAxisId="left" tick={{ fontSize: 10 }} tickFormatter={(v) => formatNumber(v)} />
-              <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} />
-              <Tooltip />
+              <YAxis
+                yAxisId="left"
+                tick={{ fontSize: 10 }}
+                tickFormatter={(v) => formatNumber(v)}
+                domain={[0, Math.ceil(maxUnits / 10000) * 10000]}
+                label={{ value: "Inventory (units)", angle: -90, position: "insideLeft", style: { fontSize: 10, fill: "#777" } }}
+              />
+              <YAxis
+                yAxisId="right"
+                orientation="right"
+                tick={{ fontSize: 10 }}
+                domain={[0, dohDomainMax]}
+                allowDataOverflow={false}
+                label={{ value: "Days on Hand", angle: 90, position: "insideRight", style: { fontSize: 10, fill: "#777" } }}
+              />
+              <Tooltip
+                formatter={(value: number | string, name: string) => {
+                  if (typeof value !== "number") return ["—", name];
+                  if (name === "DOH") return [`${value.toFixed(1)} days`, name];
+                  return [formatNumber(Math.round(value)), name];
+                }}
+              />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <ReferenceLine yAxisId="left" x={win.cutoff} stroke="#C1423B" strokeDasharray="3 3" label={{ value: "Cutoff", fontSize: 10, fill: "#C1423B" }} />
-              <Area yAxisId="left" dataKey="wholesaler" stackId="inv" fill="#004466" stroke="#004466" name="Wholesaler" fillOpacity={0.6} />
-              <Area yAxisId="left" dataKey="sp" stackId="inv" fill="#0A5C82" stroke="#0A5C82" name="Specialty Pharmacy" fillOpacity={0.6} />
-              <Area yAxisId="left" dataKey="hub" stackId="inv" fill="#C98B27" stroke="#C98B27" name="Hub" fillOpacity={0.6} />
-              <Line yAxisId="right" dataKey="dohW" stroke="#171717" name="DOH-W" dot={false} strokeWidth={1.4} />
-              <Line yAxisId="right" dataKey="dohS" stroke="#C1423B" name="DOH-SP" dot={false} strokeWidth={1.4} />
-              <Line yAxisId="right" dataKey="dohH" stroke="#1F8A5C" name="DOH-H" dot={false} strokeWidth={1.4} />
+              <ReferenceLine
+                yAxisId="right"
+                y={meta.targetDoh}
+                stroke="#1F8A5C"
+                strokeDasharray="4 2"
+                label={{ value: `Target ${meta.targetDoh}d`, fontSize: 10, fill: "#1F8A5C", position: "right" }}
+              />
+              <Area yAxisId="left" type="monotone" dataKey="units" fill={meta.areaColor} stroke={meta.areaColor} fillOpacity={0.45} name="Inventory (units)" />
+              <Line yAxisId="right" type="monotone" dataKey="doh" stroke={meta.lineColor} strokeWidth={2} dot={false} name="DOH" />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
+        <p className="text-xs text-muted mt-2">
+          Showing <strong>{meta.label}</strong> · Starting on-hand: <span className="font-mono">{formatNumber(startingUnits)} units</span>
+          {" "}· Target DOH: <span className="font-mono">{meta.targetDoh} days</span>.
+          Daily outflow assumes ~{Math.round((channel === "wholesaler" ? 0.72 : 0.28) * 100)}% of total weekly OUTs flow through this channel.
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <TierCard
           name="Wholesaler"
           units={148000}
@@ -104,7 +156,6 @@ export function InventoryDohView() {
             { name: "Option Care", units: 10000 },
           ]}
         />
-        <TierCard name="Hub" units={8000} doh={1.1} status="CRITICAL" color="danger" alert="Replenishment PO pending" />
       </div>
     </div>
   );

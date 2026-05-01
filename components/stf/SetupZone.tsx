@@ -5,6 +5,7 @@ import { useStore } from "@/lib/store";
 import { SectionHeader } from "@/components/SectionHeader";
 import { EditableNumber } from "@/components/EditableNumber";
 import { formatPct, formatNumber } from "@/lib/format";
+import { interpolateAnchors } from "@/lib/engine";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip } from "recharts";
 import { Save, Check, Plus, Trash2 } from "lucide-react";
 
@@ -13,6 +14,7 @@ export function SetupZone() {
     <div className="space-y-8">
       <SaveBar />
       <ConfigCard />
+      <PricingGtnCard />
       <SkuCard />
       <PhasingCards />
     </div>
@@ -172,6 +174,50 @@ function ConfigCard() {
       <p className="text-xs text-muted mt-2">
         Changes here propagate to every Build sub-view. The dot next to a Build sub-view in the side nav indicates engine-driven content; non-dotted views are configuration helpers.
       </p>
+    </section>
+  );
+}
+
+function PricingGtnCard() {
+  const grossPrice = useStore((s) => s.forecast.lrp.grossPrice);
+  const gtnRate = useStore((s) => s.forecast.lrp.gtnRate);
+  const cutoffDate = useStore((s) => s.forecast.stf.actualsCutoffDate);
+  const setLrpAnchor = useStore((s) => s.setLrpAnchor);
+
+  const cycleYear = parseInt(cutoffDate.split("-")[0]);
+  const grossInterp = interpolateAnchors(grossPrice, cycleYear, cycleYear)[0]?.value ?? 0;
+  const gtnInterp = interpolateAnchors(gtnRate, cycleYear, cycleYear)[0]?.value ?? 0;
+  const netPrice = grossInterp * (1 - gtnInterp);
+
+  return (
+    <section>
+      <SectionHeader
+        title="Pricing & GTN — STF Cycle"
+        subtitle={`Gross price and gross-to-net for the ${cycleYear} short-term cycle. Updates the ${cycleYear} pricing anchor and propagates to net-revenue build-up.`}
+      />
+      <div className="card grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Field label={`Gross Price (${cycleYear})`}>
+          <EditableNumber
+            value={grossInterp}
+            onChange={(v) => setLrpAnchor("grossPrice", cycleYear, v)}
+            format={(v) => `$${formatNumber(v)}`}
+            parse={(s) => parseFloat(s.replace(/[$,]/g, ""))}
+            className="input-cell w-full text-right"
+          />
+        </Field>
+        <Field label={`GTN Rate (${cycleYear})`}>
+          <EditableNumber
+            value={gtnInterp}
+            onChange={(v) => setLrpAnchor("gtnRate", cycleYear, v)}
+            format={(v) => formatPct(v, 1)}
+            parse={(s) => parseFloat(s.replace("%", "")) / 100}
+            className="input-cell w-full text-right"
+          />
+        </Field>
+        <Field label={`Net Price (computed)`}>
+          <div className="input-cell w-full text-right bg-background text-muted">${formatNumber(netPrice)}</div>
+        </Field>
+      </div>
     </section>
   );
 }

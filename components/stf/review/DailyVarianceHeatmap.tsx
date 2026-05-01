@@ -47,7 +47,7 @@ export function DailyVarianceHeatmap() {
         <table className="text-[10px] border-collapse">
           <thead>
             <tr>
-              <th className="px-2 py-1 text-left text-muted">Week ending</th>
+              <th className="px-2 py-1 text-left text-muted">Week starting</th>
               {(["Mon", "Tue", "Wed", "Thu", "Fri"] as const).map((d) => (
                 <th key={d} className="px-2 py-1 font-mono text-muted text-center">{d}</th>
               ))}

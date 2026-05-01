@@ -95,98 +95,119 @@ function BurndownCard({
 
 interface ComputedSlim { monthly: { month: string; netSales: number }[] }
 
-function buildMonthBurndown(computed: ComputedSlim | null, cutoff: string) {
-  // Apr 2026: 22 ERDs assumed; today = Apr 22 (14 day elapsed of 30)
-  const apr = computed?.monthly.find((m) => m.month === "2026-04")?.netSales ?? 356_000_000;
-  const dailyTarget = apr / 22;
+// Demo behavior: assume the current period is running ~6% behind plan, so MTD/QTD
+// actuals trend below the linear cumulative target. Numbers are deterministic so the
+// MTD and QTD cards stay internally consistent (gap = actual − target_through_today).
+const RUN_RATE_VS_TARGET = 0.94;
+
+function buildMonthBurndown(computed: ComputedSlim | null, _cutoff: string) {
+  // Apr 2026: 22 ERDs assumed; today = day 14 of the month.
+  const aprTotalUsd = computed?.monthly.find((m) => m.month === "2026-04")?.netSales ?? 356_000_000;
+  const aprTotalM = aprTotalUsd / 1e6;
+  const totalErds = 22;
+  const totalDays = 30;
   const todayDay = 14;
+
+  // Cumulative target through today (linear ramp on ERDs)
+  const mtdTarget = (todayDay / totalErds) * aprTotalM;
+  // Actuals run-rate: 6% behind target on average, with mild day-to-day noise
+  const mtdActual = mtdTarget * RUN_RATE_VS_TARGET;
+  const gap = mtdActual - mtdTarget;
+
   const data: Record<string, number | string | null>[] = [];
-  // Build daily target / actual / projected
   let actualCum = 0;
-  let actualDailyAccel = 1.06; // running ahead initially
-  for (let d = 1; d <= 30; d++) {
-    const target = (Math.min(d, 22) / 22) * apr;
+  for (let d = 1; d <= totalDays; d++) {
+    const targetCum = (Math.min(d, totalErds) / totalErds) * aprTotalM;
     let actual: number | null = null;
     let projected: number | null = null;
     if (d <= todayDay) {
-      // Build actual run rate roughly hitting $342M MTD by day 14
-      const mtdTarget = (todayDay / 22) * apr;
-      const ratio = 342e6 / mtdTarget; // ratio of actual to target so MTD = $342M
-      const targetThisDay = (1 / 22) * apr;
-      actualCum += targetThisDay * ratio * (0.9 + (d % 3) * 0.06);
-      actual = actualCum / 1e6;
+      // Distribute MTD actual across days with mild oscillation but a clean cumulative endpoint
+      const noise = 0.92 + ((d * 7) % 5) * 0.04; // 0.92..1.08 deterministic
+      const dailyShare = (1 / todayDay) * mtdActual * noise;
+      actualCum += dailyShare;
+      // Snap last day so cumulative lands exactly on mtdActual
+      if (d === todayDay) actualCum = mtdActual;
+      actual = actualCum;
     }
     if (d >= todayDay) {
-      const runRate = actualCum / todayDay;
-      projected = (actualCum + runRate * (d - todayDay)) / 1e6;
+      const dailyRunRate = mtdActual / todayDay;
+      projected = mtdActual + dailyRunRate * (d - todayDay);
     }
-    data.push({ day: d, target: target / 1e6, actual, projected });
+    data.push({ day: d, target: targetCum, actual, projected });
   }
 
-  const mtdActual = 342;
-  const mtdTarget = (todayDay / 22) * apr / 1e6;
-  const gap = mtdActual - mtdTarget;
-  const projectedEom = (actualCum / todayDay) * 22 / 1e6;
+  const daysRemaining = totalErds - todayDay;
+  const requiredDaily = (aprTotalM - mtdActual) / Math.max(1, daysRemaining);
+  const projectedEom = (mtdActual / todayDay) * totalErds;
+  const gapPct = (gap / mtdTarget) * 100;
   return {
     data,
     todayDay,
     summary: [
       { label: "MTD Actual", value: `$${mtdActual.toFixed(0)}M` },
       { label: "MTD Target", value: `$${mtdTarget.toFixed(0)}M` },
-      { label: "Gap", value: `${gap >= 0 ? "+" : ""}$${gap.toFixed(0)}M (${gap >= 0 ? "+" : ""}${((gap / mtdTarget) * 100).toFixed(1)}%)` },
-      { label: "Days remaining", value: `${22 - todayDay}` },
-      { label: "Required daily run-rate", value: `$${((apr / 1e6 - mtdActual) / (22 - todayDay)).toFixed(2)}M/day` },
-      { label: "Projected EOM", value: `$${projectedEom.toFixed(0)}M (${((projectedEom / (apr / 1e6)) * 100).toFixed(0)}% of plan)` },
+      { label: "Gap", value: `${gap >= 0 ? "+" : ""}$${gap.toFixed(1)}M (${gap >= 0 ? "+" : ""}${gapPct.toFixed(1)}%)` },
+      { label: "Days remaining", value: `${daysRemaining}` },
+      { label: "Required daily run-rate", value: `$${requiredDaily.toFixed(2)}M/day` },
+      { label: "Projected EOM", value: `$${projectedEom.toFixed(0)}M (${((projectedEom / aprTotalM) * 100).toFixed(0)}% of plan)` },
     ],
     statusBanner:
-      gap < -10
-        ? `April month at risk: gap of $${Math.abs(gap).toFixed(0)}M to target. Recovery requires $${((apr / 1e6 - mtdActual) / (22 - todayDay)).toFixed(2)}M/day for remaining ${22 - todayDay} days.`
+      gap <= -10
+        ? `April month at risk: gap of $${Math.abs(gap).toFixed(1)}M to target. Recovery requires $${requiredDaily.toFixed(2)}M/day for remaining ${daysRemaining} days.`
         : gap >= 0
         ? "On track to meet April plan."
-        : `Minor gap to April plan ($${Math.abs(gap).toFixed(0)}M). Modest acceleration required.`,
+        : `Minor gap to April plan ($${Math.abs(gap).toFixed(1)}M). Modest acceleration required.`,
   };
 }
 
-function buildQuarterBurndown(computed: ComputedSlim | null, cutoff: string) {
-  // Q2 2026: weeks 14-26 of year, ~13 weeks. Today in week 16 (~3 weeks elapsed).
-  const q2Total =
-    (computed?.monthly.find((m) => m.month === "2026-04")?.netSales ?? 0) +
-    (computed?.monthly.find((m) => m.month === "2026-05")?.netSales ?? 0) +
-    (computed?.monthly.find((m) => m.month === "2026-06")?.netSales ?? 0) ||
+function buildQuarterBurndown(computed: ComputedSlim | null, _cutoff: string) {
+  // Q2 2026 (Apr + May + Jun): 13 weeks total, today = end of week 3.
+  const q2TotalUsd =
+    ((computed?.monthly.find((m) => m.month === "2026-04")?.netSales ?? 0) +
+      (computed?.monthly.find((m) => m.month === "2026-05")?.netSales ?? 0) +
+      (computed?.monthly.find((m) => m.month === "2026-06")?.netSales ?? 0)) ||
     1_072_000_000;
-  const todayWeek = 3;
+  const q2TotalM = q2TotalUsd / 1e6;
   const totalWeeks = 13;
+  const todayWeek = 3;
+
+  const qtdTarget = (todayWeek / totalWeeks) * q2TotalM;
+  const qtdActual = qtdTarget * RUN_RATE_VS_TARGET;
+  const gap = qtdActual - qtdTarget;
+
   const data: Record<string, number | string | null>[] = [];
   let actualCum = 0;
   for (let w = 1; w <= totalWeeks; w++) {
-    const target = (w / totalWeeks) * q2Total;
+    const targetCum = (w / totalWeeks) * q2TotalM;
     let actual: number | null = null;
     let projected: number | null = null;
     if (w <= todayWeek) {
-      const ratio = 1058e6 / ((todayWeek / totalWeeks) * q2Total); // run-rate ratio
-      actualCum += (q2Total / totalWeeks) * ratio * (0.96 + w * 0.02);
-      actual = actualCum / 1e6;
+      const noise = 0.94 + ((w * 11) % 4) * 0.04;
+      const weeklyShare = (1 / todayWeek) * qtdActual * noise;
+      actualCum += weeklyShare;
+      if (w === todayWeek) actualCum = qtdActual;
+      actual = actualCum;
     }
     if (w >= todayWeek) {
-      const runRate = actualCum / todayWeek;
-      projected = (actualCum + runRate * (w - todayWeek)) / 1e6;
+      const weeklyRunRate = qtdActual / todayWeek;
+      projected = qtdActual + weeklyRunRate * (w - todayWeek);
     }
-    data.push({ week: `W${w}`, target: target / 1e6, actual, projected });
+    data.push({ week: `W${w}`, target: targetCum, actual, projected });
   }
-  const qtdActual = 1058;
-  const qtdTarget = (todayWeek / totalWeeks) * q2Total / 1e6;
-  const gap = qtdActual - qtdTarget;
-  const projectedEoq = (actualCum / todayWeek) * totalWeeks / 1e6;
+  const weeksRemaining = totalWeeks - todayWeek;
+  const requiredWeekly = (q2TotalM - qtdActual) / Math.max(1, weeksRemaining);
+  const projectedEoq = (qtdActual / todayWeek) * totalWeeks;
+  const gapPct = (gap / qtdTarget) * 100;
   return {
     data,
     todayWeek: `W${todayWeek}`,
     summary: [
       { label: "QTD Actual", value: `$${qtdActual.toFixed(0)}M` },
       { label: "QTD Target", value: `$${qtdTarget.toFixed(0)}M` },
-      { label: "Gap", value: `${gap >= 0 ? "+" : ""}$${gap.toFixed(0)}M (${gap >= 0 ? "+" : ""}${((gap / qtdTarget) * 100).toFixed(1)}%)` },
-      { label: "Weeks remaining", value: `${totalWeeks - todayWeek}` },
-      { label: "Required weekly run-rate", value: `$${((q2Total / 1e6 - qtdActual) / (totalWeeks - todayWeek)).toFixed(0)}M/week` },
-      { label: "Projected EOQ", value: `$${projectedEoq.toFixed(0)}M (${((projectedEoq / (q2Total / 1e6)) * 100).toFixed(1)}% of plan)` },
+      { label: "Gap", value: `${gap >= 0 ? "+" : ""}$${gap.toFixed(1)}M (${gap >= 0 ? "+" : ""}${gapPct.toFixed(1)}%)` },
+      { label: "Weeks remaining", value: `${weeksRemaining}` },
+      { label: "Required weekly run-rate", value: `$${requiredWeekly.toFixed(0)}M/week` },
+      { label: "Projected EOQ", value: `$${projectedEoq.toFixed(0)}M (${((projectedEoq / q2TotalM) * 100).toFixed(1)}% of plan)` },
     ],
   };
 }

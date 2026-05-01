@@ -7,7 +7,6 @@ import { VarianceWaterfall } from "@/components/lrp/review/VarianceWaterfall";
 import { ForecastEvolution } from "@/components/lrp/review/ForecastEvolution";
 import { DriverSensitivity } from "@/components/lrp/review/DriverSensitivity";
 import { PeakYearAnalysis } from "@/components/lrp/review/PeakYearAnalysis";
-import { GeographicDecomposition } from "@/components/lrp/review/GeographicDecomposition";
 import { ConfidenceCone } from "@/components/lrp/review/ConfidenceCone";
 import { MarketEventSensitivity } from "@/components/lrp/review/MarketEventSensitivity";
 import { useState } from "react";
@@ -19,9 +18,8 @@ const SECTIONS = [
   { id: "evolution", label: "3. Forecast Evolution" },
   { id: "sensitivity", label: "4. Driver Sensitivity" },
   { id: "peak", label: "5. Peak Year Analysis" },
-  { id: "geo", label: "6. Subnational US Regions" },
-  { id: "cone", label: "7. Confidence Cone" },
-  { id: "events", label: "8. Market Event Sensitivity" },
+  { id: "cone", label: "6. Confidence Cone" },
+  { id: "events", label: "7. Market Event Sensitivity" },
 ];
 
 const YEAR_OPTIONS = [2027, 2028, 2030, 2032, 2035];
@@ -113,9 +111,6 @@ export default function LrpReviewPage() {
         </section>
         <section id="peak">
           <PeakYearAnalysis viewThroughYear={viewThroughYear} />
-        </section>
-        <section id="geo">
-          <GeographicDecomposition viewThroughYear={viewThroughYear} />
         </section>
         <section id="cone">
           <ConfidenceCone viewThroughYear={viewThroughYear} />

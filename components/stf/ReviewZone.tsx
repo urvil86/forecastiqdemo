@@ -2,18 +2,14 @@
 
 import { PacingBurndown } from "./review/PacingBurndown";
 import { DailyVarianceHeatmap } from "./review/DailyVarianceHeatmap";
-import { AccountPerformanceBubble } from "./review/AccountPerformanceBubble";
-import { ChannelInventoryFlow } from "./review/ChannelInventoryFlow";
 import { SkuMixEvolution } from "./review/SkuMixEvolution";
 import { SameWeekYoY } from "./review/SameWeekYoY";
 
 const SECTIONS = [
   { id: "pacing", label: "1. Pacing Burndown" },
   { id: "heatmap", label: "2. Daily Variance Heatmap" },
-  { id: "accounts", label: "3. Account Performance" },
-  { id: "channel", label: "4. Channel Inventory Flow" },
-  { id: "sku", label: "5. SKU Mix Evolution" },
-  { id: "yoy", label: "6. Same-Week YoY" },
+  { id: "sku", label: "3. SKU Mix Evolution" },
+  { id: "yoy", label: "4. Same-Week YoY" },
 ];
 
 export function ReviewZone() {
@@ -37,12 +33,6 @@ export function ReviewZone() {
         </section>
         <section id="heatmap">
           <DailyVarianceHeatmap />
-        </section>
-        <section id="accounts">
-          <AccountPerformanceBubble />
-        </section>
-        <section id="channel">
-          <ChannelInventoryFlow />
         </section>
         <section id="sku">
           <SkuMixEvolution />

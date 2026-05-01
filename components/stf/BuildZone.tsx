@@ -5,10 +5,8 @@ import { TrendSelectionView } from "./build/TrendSelectionView";
 import { NaiveOutsView } from "./build/NaiveOutsView";
 import { HolidayAdjustmentsView } from "./build/HolidayAdjustmentsView";
 import { EventsView } from "./build/EventsView";
-import { SkuMixView } from "./build/SkuMixView";
 import { NfsSamplesView } from "./build/NfsSamplesView";
 import { InventoryDohView } from "./build/InventoryDohView";
-import { PricingGtnView } from "./build/PricingGtnView";
 import { NetRevenueView } from "./build/NetRevenueView";
 
 const SUBVIEWS = [
@@ -16,10 +14,8 @@ const SUBVIEWS = [
   { id: "naive-outs", label: "Naive OUTs", priority: true },
   { id: "holiday", label: "Holiday Adjustments", priority: true },
   { id: "events", label: "Events" },
-  { id: "sku-mix", label: "SKU Mix" },
   { id: "nfs", label: "NFS / Samples" },
   { id: "inventory", label: "Inventory & DOH", priority: true },
-  { id: "pricing", label: "Pricing & GTN" },
   { id: "net-revenue", label: "Net Revenue Build-up", priority: true },
 ];
 
@@ -52,10 +48,8 @@ export function BuildZone() {
         {active === "naive-outs" && <NaiveOutsView />}
         {active === "holiday" && <HolidayAdjustmentsView />}
         {active === "events" && <EventsView />}
-        {active === "sku-mix" && <SkuMixView />}
         {active === "nfs" && <NfsSamplesView />}
         {active === "inventory" && <InventoryDohView />}
-        {active === "pricing" && <PricingGtnView />}
         {active === "net-revenue" && <NetRevenueView />}
       </div>
     </div>

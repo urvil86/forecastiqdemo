@@ -28,14 +28,16 @@ const ALGOS: { id: TrendAlgorithm; label: string }[] = [
   { id: "customization", label: "Customization" },
 ];
 
-export function TrendSelectionCard() {
+export function TrendSelectionCard({ chartGrain = "annual" }: { chartGrain?: "annual" | "stf" } = {}) {
   const forecast = useStore((s) => s.forecast);
   const computed = useStore((s) => s.computed);
   const setSelectedAlgorithm = useStore((s) => s.setSelectedAlgorithm);
   const selected = forecast.lrp.selectedAlgorithm;
   const comparisons = computed?.trendDiagnostics.algorithmsCompared ?? [];
+  const stfGranularity = forecast.stf.granularity;
+  const stfCutoff = forecast.stf.actualsCutoffDate;
 
-  const chartData = useMemo(() => {
+  const annualChartData = useMemo(() => {
     if (!computed) return [];
     return computed.annual.map((a) => {
       const isHistorical = forecast.lrp.annualActuals.some((aa) => aa.year === a.year);
@@ -47,24 +49,64 @@ export function TrendSelectionCard() {
     });
   }, [computed, forecast.lrp.annualActuals]);
 
+  const stfChartData = useMemo(() => {
+    if (!computed) return [];
+    if (stfGranularity === "daily") {
+      return computed.daily.map((d) => {
+        const isActual = d.date <= stfCutoff;
+        return {
+          period: d.date,
+          actuals: isActual ? d.totalVolume : null,
+          forecast: !isActual ? d.totalVolume : null,
+        };
+      });
+    }
+    return computed.weekly.map((w) => ({
+      period: w.weekStart,
+      actuals: w.isActual ? w.totalVolume : null,
+      forecast: !w.isActual ? w.totalVolume : null,
+    }));
+  }, [computed, stfGranularity, stfCutoff]);
+
+  const showStf = chartGrain === "stf";
+  const stfTickInterval = stfGranularity === "daily" ? Math.max(1, Math.floor(stfChartData.length / 12)) : 26;
+  const captionText = showStf
+    ? stfGranularity === "daily"
+      ? "Volume (doses, daily)"
+      : "Volume (doses, weekly)"
+    : "Volume (thousand doses, annual)";
+
   return (
     <>
       <div className="card">
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
           <div className="lg:col-span-3">
-            <div className="caption text-muted mb-2">Volume (thousand doses)</div>
+            <div className="caption text-muted mb-2">{captionText}</div>
             <div className="h-72">
               <ResponsiveContainer>
-                <LineChart data={chartData} margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#E6E1D6" />
-                  <XAxis dataKey="year" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip formatter={(v: number | string) => (typeof v === "number" ? formatNumber(v) + "K" : "—")} />
-                  <ReferenceLine x={2026} stroke="#C98B27" strokeDasharray="4 4" label={{ value: "Today", fontSize: 11, fill: "#C98B27" }} />
-                  <Line type="monotone" dataKey="actuals" stroke="#004466" strokeWidth={2.5} dot={{ r: 3 }} name="Actuals" />
-                  <Line type="monotone" dataKey="forecast" stroke="#C98B27" strokeWidth={2.5} dot={{ r: 3 }} name="Forecast" />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
-                </LineChart>
+                {showStf ? (
+                  <LineChart data={stfChartData} margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#E6E1D6" />
+                    <XAxis dataKey="period" tick={{ fontSize: 10 }} interval={stfTickInterval} />
+                    <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => formatNumber(v)} />
+                    <Tooltip formatter={(v: number | string) => (typeof v === "number" ? formatNumber(v) : "—")} />
+                    <ReferenceLine x={stfCutoff} stroke="#C98B27" strokeDasharray="4 4" label={{ value: "Cutoff", fontSize: 10, fill: "#C98B27" }} />
+                    <Line type="monotone" dataKey="actuals" stroke="#004466" strokeWidth={2} dot={false} name="Actuals" />
+                    <Line type="monotone" dataKey="forecast" stroke="#C98B27" strokeWidth={2} dot={false} name="Forecast" />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                  </LineChart>
+                ) : (
+                  <LineChart data={annualChartData} margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#E6E1D6" />
+                    <XAxis dataKey="year" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} />
+                    <Tooltip formatter={(v: number | string) => (typeof v === "number" ? formatNumber(v) + "K" : "—")} />
+                    <ReferenceLine x={2026} stroke="#C98B27" strokeDasharray="4 4" label={{ value: "Today", fontSize: 11, fill: "#C98B27" }} />
+                    <Line type="monotone" dataKey="actuals" stroke="#004466" strokeWidth={2.5} dot={{ r: 3 }} name="Actuals" />
+                    <Line type="monotone" dataKey="forecast" stroke="#C98B27" strokeWidth={2.5} dot={{ r: 3 }} name="Forecast" />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                  </LineChart>
+                )}
               </ResponsiveContainer>
             </div>
           </div>
