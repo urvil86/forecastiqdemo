@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useStore } from "@/lib/store";
 import { SectionHeader } from "@/components/SectionHeader";
 import { EditableNumber } from "@/components/EditableNumber";
@@ -233,11 +233,63 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function SkuCard() {
   const skus = useStore((s) => s.forecast.stf.skus);
+  const horizonWeeks = useStore((s) => s.forecast.stf.horizonWeeks);
+  const weeklyInputs = useStore((s) => s.forecast.stf.weeklyInputs);
   const updateLRPInput = useStore((s) => s.updateLRPInput);
+  const applySkuMixForWeeks = useStore((s) => s.applySkuMixForWeeks);
+  const clearSkuMixOverrides = useStore((s) => s.clearSkuMixOverrides);
+
+  const [applyWeeks, setApplyWeeks] = useState<number>(8);
+
+  // Count distinct future weeks that currently have any SKU mix override
+  const lockedWeeks = useMemo(() => {
+    const set = new Set<string>();
+    for (const wi of weeklyInputs) if (wi.skuMixOverride !== undefined) set.add(wi.weekStart);
+    return set.size;
+  }, [weeklyInputs]);
+
+  const horizonOptions = [4, 8, 13, 26].filter((w) => w <= horizonWeeks);
+  if (!horizonOptions.includes(horizonWeeks)) horizonOptions.push(horizonWeeks);
+
   return (
     <section>
-      <SectionHeader title="SKU Configuration" subtitle="Active SKUs and default mix percentages." />
+      <SectionHeader title="SKU Configuration" subtitle="Active SKUs and default mix percentages. Lock the current mix for a forward window so it stays fixed even if the defaults change later." />
       <div className="card">
+        <div className="flex items-center justify-between flex-wrap gap-3 mb-3 pb-3 border-b border-border">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="caption text-muted">Apply current mix for next:</span>
+            <select
+              value={applyWeeks}
+              onChange={(e) => setApplyWeeks(parseInt(e.target.value))}
+              className="input-cell !font-sans text-sm"
+            >
+              {horizonOptions.map((w) => (
+                <option key={w} value={w}>{w === horizonWeeks ? `${w} weeks (full horizon)` : `${w} weeks`}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => applySkuMixForWeeks(applyWeeks)}
+              className="btn-secondary !py-1 !px-3 text-xs"
+            >
+              Apply
+            </button>
+            {lockedWeeks > 0 && (
+              <button
+                type="button"
+                onClick={clearSkuMixOverrides}
+                className="btn-ghost !py-1 !px-3 text-xs"
+              >
+                Clear ({lockedWeeks} {lockedWeeks === 1 ? "week" : "weeks"})
+              </button>
+            )}
+          </div>
+          <span className="text-xs text-muted">
+            {lockedWeeks > 0
+              ? `Mix locked for ${lockedWeeks} forward ${lockedWeeks === 1 ? "week" : "weeks"}`
+              : "No mix lock applied — engine uses defaults for the full horizon"}
+          </span>
+        </div>
         <table className="data-table">
           <thead>
             <tr>
@@ -275,6 +327,8 @@ function SkuCard() {
         </table>
         <p className="text-xs text-muted mt-3">
           Active SKU mixes are normalized to 100% by the engine. Inactive SKUs are excluded from forecast totals.
+          Apply locks the current Default Mix % values as per-week overrides for the chosen window — useful when you
+          expect a launch or competitor event to shift the mix later in the horizon.
         </p>
       </div>
     </section>

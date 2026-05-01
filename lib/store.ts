@@ -73,6 +73,10 @@ interface AppStore {
   // NFS / Samples
   updateNfs: (field: keyof ConnectedForecast["stf"]["nfs"], value: number) => void;
 
+  // SKU mix horizon — locks current defaultMixPct as a per-week override for the next N weeks
+  applySkuMixForWeeks: (weeks: number) => void;
+  clearSkuMixOverrides: () => void;
+
   recompute: () => void;
   saveVersion: (label: string) => void;
   loadVersion: (versionId: string) => void;
@@ -476,6 +480,66 @@ export const useStore = create<AppStore>()(
             stf: { ...state.forecast.stf, nfs: { ...state.forecast.stf.nfs, [field]: value } },
           },
         }));
+      },
+      applySkuMixForWeeks: (weeks) => {
+        set((state) => {
+          const cutoff = new Date(state.forecast.stf.actualsCutoffDate);
+          // Snap cutoff to following Monday so weekStarts align with engine grid
+          const day = cutoff.getUTCDay();
+          const offsetToMon = day === 0 ? 1 : (8 - day) % 7 || 7;
+          const firstWeek = new Date(cutoff.getTime());
+          firstWeek.setUTCDate(firstWeek.getUTCDate() + offsetToMon);
+          const activeSkus = state.forecast.stf.skus.filter((s) => s.active);
+          // Drop existing skuMixOverride entries for the affected window first
+          const cleaned = state.forecast.stf.weeklyInputs.filter((wi) => wi.skuMixOverride === undefined);
+          const next = [...cleaned];
+          for (let i = 0; i < weeks; i++) {
+            const wd = new Date(firstWeek.getTime());
+            wd.setUTCDate(wd.getUTCDate() + i * 7);
+            const weekStart = wd.toISOString().slice(0, 10);
+            for (const sku of activeSkus) {
+              const idx = next.findIndex((wi) => wi.weekStart === weekStart && wi.sku === sku.id);
+              if (idx >= 0) {
+                next[idx] = { ...next[idx], skuMixOverride: sku.defaultMixPct };
+              } else {
+                next.push({ weekStart, sku: sku.id, trendValue: 0, skuMixOverride: sku.defaultMixPct });
+              }
+            }
+          }
+          return {
+            forecast: { ...state.forecast, stf: { ...state.forecast.stf, weeklyInputs: next } },
+          };
+        });
+        scheduleRecompute(get);
+      },
+      clearSkuMixOverrides: () => {
+        set((state) => ({
+          forecast: {
+            ...state.forecast,
+            stf: {
+              ...state.forecast.stf,
+              weeklyInputs: state.forecast.stf.weeklyInputs
+                .map((wi) => {
+                  if (wi.skuMixOverride === undefined) return wi;
+                  const next = { ...wi };
+                  delete (next as Record<string, unknown>).skuMixOverride;
+                  return next;
+                })
+                // Drop entries that are now empty (no fields set)
+                .filter((wi) =>
+                  wi.override !== undefined ||
+                  wi.holidayAdjPct !== undefined ||
+                  wi.eventImpactUnits !== undefined ||
+                  wi.skuMixOverride !== undefined ||
+                  wi.nfsUnits !== undefined ||
+                  wi.dohTargetOverride !== undefined ||
+                  wi.grossPriceOverride !== undefined ||
+                  wi.tradeDiscountOverride !== undefined ||
+                  wi.reserveRateOverride !== undefined
+                ),
+          },
+        }));
+        scheduleRecompute(get);
       },
 
       recompute: () => {

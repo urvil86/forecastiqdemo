@@ -228,14 +228,31 @@ export function compute(forecast: ConnectedForecast): ComputedForecastConnected 
     w.isActual = wd.getTime() <= cutoff.getTime();
     w.isPartial = wd.getTime() > cutoff.getTime() && wd.getTime() <= partial.getTime();
 
+    // If any active SKU has a per-week skuMixOverride for this week, use those values
+    // (renormalized across active SKUs for the week) instead of the global defaultMixPct.
+    let weekHasMixOverride = false;
+    let weekMixSum = 0;
+    const weekMixByid = new Map<string, number>();
+    for (const sku of activeSkus) {
+      const wi = weeklyInputMap.get(`${w.weekStart}|${sku.id}`);
+      if (wi?.skuMixOverride !== undefined) weekHasMixOverride = true;
+      const v = wi?.skuMixOverride ?? sku.defaultMixPct;
+      weekMixByid.set(sku.id, v);
+      weekMixSum += v;
+    }
+    const weekTotalMix = weekHasMixOverride ? (weekMixSum || 1) : totalActiveMix;
+
     // Compute SKU breakdown from week total + STF overrides
     let weekTotalVol = 0;
     let weekTotalNet = 0;
     let weekTotalGross = 0;
-    let anyOverride = false;
+    let anyOverride = weekHasMixOverride;
 
     for (const sku of activeSkus) {
-      const baseSkuShare = sku.defaultMixPct / totalActiveMix;
+      const skuMixValue = weekHasMixOverride
+        ? (weekMixByid.get(sku.id) ?? sku.defaultMixPct)
+        : sku.defaultMixPct;
+      const baseSkuShare = skuMixValue / weekTotalMix;
       const baseSkuVol = w.totalVolume * baseSkuShare;
       // Find equivalent net/gross for this SKU
       const baseSkuNet = w.totalNetSales * baseSkuShare;
