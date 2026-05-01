@@ -39,12 +39,19 @@ export function TrendSelectionCard({ chartGrain = "annual" }: { chartGrain?: "an
 
   const annualChartData = useMemo(() => {
     if (!computed) return [];
+    const lastActualYear = forecast.lrp.annualActuals.reduce(
+      (m, aa) => (aa.year > m ? aa.year : m),
+      Number.NEGATIVE_INFINITY
+    );
     return computed.annual.map((a) => {
       const isHistorical = forecast.lrp.annualActuals.some((aa) => aa.year === a.year);
+      // Include the last historical year in the forecast series too, so the forecast line
+      // connects visually to the last actual point (bridge between actuals and forecast).
+      const includeInForecast = !isHistorical || a.year === lastActualYear;
       return {
         year: a.year,
         actuals: isHistorical ? a.volume / 1000 : null,
-        forecast: !isHistorical ? a.volume / 1000 : null,
+        forecast: includeInForecast ? a.volume / 1000 : null,
       };
     });
   }, [computed, forecast.lrp.annualActuals]);
@@ -52,20 +59,37 @@ export function TrendSelectionCard({ chartGrain = "annual" }: { chartGrain?: "an
   const stfChartData = useMemo(() => {
     if (!computed) return [];
     if (stfGranularity === "daily") {
-      return computed.daily.map((d) => {
+      const daily = computed.daily;
+      let bridgeIdx = -1;
+      for (let i = 0; i < daily.length; i++) {
+        if (daily[i].date <= stfCutoff) bridgeIdx = i;
+        else break;
+      }
+      return daily.map((d, i) => {
         const isActual = d.date <= stfCutoff;
+        // Bridge: include the last actual day in the forecast series so the lines connect.
+        const includeInForecast = !isActual || i === bridgeIdx;
         return {
           period: d.date,
           actuals: isActual ? d.totalVolume : null,
-          forecast: !isActual ? d.totalVolume : null,
+          forecast: includeInForecast ? d.totalVolume : null,
         };
       });
     }
-    return computed.weekly.map((w) => ({
-      period: w.weekStart,
-      actuals: w.isActual ? w.totalVolume : null,
-      forecast: !w.isActual ? w.totalVolume : null,
-    }));
+    const weekly = computed.weekly;
+    let bridgeIdx = -1;
+    for (let i = 0; i < weekly.length; i++) {
+      if (weekly[i].isActual) bridgeIdx = i;
+      else break;
+    }
+    return weekly.map((w, i) => {
+      const includeInForecast = !w.isActual || i === bridgeIdx;
+      return {
+        period: w.weekStart,
+        actuals: w.isActual ? w.totalVolume : null,
+        forecast: includeInForecast ? w.totalVolume : null,
+      };
+    });
   }, [computed, stfGranularity, stfCutoff]);
 
   const showStf = chartGrain === "stf";

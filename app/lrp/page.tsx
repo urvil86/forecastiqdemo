@@ -54,24 +54,32 @@ export default function LrpPage() {
 
   return (
     <div className="p-8">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="font-heading text-h2 text-secondary">{forecast.brand} {forecast.geography} — LRP</h1>
-          <p className="text-sm text-muted mt-1">
-            Long-Range Plan · {forecast.timeframe.historicalStart.slice(0, 4)} – {forecast.timeframe.forecastEnd.slice(0, 4)} · v{forecast.version} · {forecast.versionLabel}
-          </p>
-          <div className="text-xs text-muted mt-2">
-            Connected to STF · Last STF sync: 2 minutes ago ·{" "}
-            <Link href="/stf" className="text-primary hover:underline">Open STF →</Link>{" "}
-            ·{" "}
-            <Link href="/stf/connect" className="text-primary hover:underline">Compare LRP vs STF →</Link>
-          </div>
+      <div className="flex items-center justify-between mb-2 flex-wrap gap-3">
+        <div className="flex items-center gap-4 flex-wrap">
+          <h1 className="font-heading text-h2 text-secondary">Long Range Plan</h1>
+          <select
+            value={forecast.brand}
+            disabled
+            className="input-cell !font-sans text-sm"
+            title="Multi-brand selection available in production"
+          >
+            <option value="Ocrevus">Ocrevus</option>
+          </select>
         </div>
         <div className="flex items-center gap-2">
           <button className="btn-secondary" onClick={() => setShowSave(true)}>Save Version</button>
           <Link href="/lrp/review" className="btn-secondary">Review Forecast</Link>
           <button className="btn-ghost" onClick={() => setShowVersionDrawer(true)}>Version History</button>
         </div>
+      </div>
+      <p className="text-xs text-muted">
+        {forecast.brand} {forecast.geography} · {forecast.timeframe.historicalStart.slice(0, 4)} – {forecast.timeframe.forecastEnd.slice(0, 4)} · v{forecast.version} · {forecast.versionLabel}
+      </p>
+      <div className="text-xs text-muted mt-1 mb-6">
+        Connected to STF · Last STF sync: 2 minutes ago ·{" "}
+        <Link href="/stf" className="text-primary hover:underline">Open STF →</Link>{" "}
+        ·{" "}
+        <Link href="/stf/connect" className="text-primary hover:underline">Compare LRP vs STF →</Link>
       </div>
 
       <div className="flex flex-wrap gap-3 mb-8">
