@@ -553,11 +553,11 @@ export const useStore = create<AppStore>()(
               return rest;
             })
             .filter((wi) => {
+              // skuMixOverride was just stripped above, so don't check it here
               return (
                 wi.override !== undefined ||
                 wi.holidayAdjPct !== undefined ||
                 wi.eventImpactUnits !== undefined ||
-                wi.skuMixOverride !== undefined ||
                 wi.nfsUnits !== undefined ||
                 wi.dohTargetOverride !== undefined ||
                 wi.grossPriceOverride !== undefined ||
