@@ -79,6 +79,15 @@ interface AppStore {
   applySkuMixCustomForWeeks: (weeks: number, mixBySkuId: Record<string, number>) => void;
   clearSkuMixOverrides: () => void;
 
+  // NFS forward plan — set planned samples/PAP/bridge per-week values for a forward window
+  applyNfsPlanForWeeks: (
+    weeks: number,
+    samplesPerWeek: number,
+    papPerWeek: number,
+    bridgePerWeek: number
+  ) => void;
+  clearNfsPlan: () => void;
+
   recompute: () => void;
   saveVersion: (label: string) => void;
   loadVersion: (versionId: string) => void;
@@ -540,6 +549,41 @@ export const useStore = create<AppStore>()(
           }
           return {
             forecast: { ...state.forecast, stf: { ...state.forecast.stf, weeklyInputs: next } },
+          };
+        });
+        scheduleRecompute(get);
+      },
+      applyNfsPlanForWeeks: (weeks, samplesPerWeek, papPerWeek, bridgePerWeek) => {
+        set((state) => {
+          const cutoff = new Date(state.forecast.stf.actualsCutoffDate);
+          const day = cutoff.getUTCDay();
+          const offsetToMon = day === 0 ? 1 : (8 - day) % 7 || 7;
+          const firstWeek = new Date(cutoff.getTime());
+          firstWeek.setUTCDate(firstWeek.getUTCDate() + offsetToMon);
+          const fromWeek = firstWeek.toISOString().slice(0, 10);
+          return {
+            forecast: {
+              ...state.forecast,
+              stf: {
+                ...state.forecast.stf,
+                nfs: {
+                  ...state.forecast.stf.nfs,
+                  plan: { samplesPerWeek, papPerWeek, bridgePerWeek, weeks, fromWeek },
+                },
+              },
+            },
+          };
+        });
+        scheduleRecompute(get);
+      },
+      clearNfsPlan: () => {
+        set((state) => {
+          const { plan: _drop, ...nfsRest } = state.forecast.stf.nfs;
+          return {
+            forecast: {
+              ...state.forecast,
+              stf: { ...state.forecast.stf, nfs: nfsRest },
+            },
           };
         });
         scheduleRecompute(get);

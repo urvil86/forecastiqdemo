@@ -5,7 +5,7 @@ import { useStore } from "@/lib/store";
 import { useForecastWindow } from "@/lib/useForecastWindow";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ReferenceLine } from "recharts";
 import { EditableNumber } from "@/components/EditableNumber";
-import { formatPct, formatNumber } from "@/lib/format";
+import { formatNumber } from "@/lib/format";
 
 export function NfsSamplesView() {
   const computed = useStore((s) => s.computed);
@@ -13,33 +13,48 @@ export function NfsSamplesView() {
   const updateNfs = useStore((s) => s.updateNfs);
   const skus = useStore((s) => s.forecast.stf.skus);
   const horizonWeeks = useStore((s) => s.forecast.stf.horizonWeeks);
-  const weeklyInputs = useStore((s) => s.forecast.stf.weeklyInputs);
-  const applySkuMixCustomForWeeks = useStore((s) => s.applySkuMixCustomForWeeks);
-  const clearSkuMixOverrides = useStore((s) => s.clearSkuMixOverrides);
+  const applyNfsPlanForWeeks = useStore((s) => s.applyNfsPlanForWeeks);
+  const clearNfsPlan = useStore((s) => s.clearNfsPlan);
   const win = useForecastWindow();
 
   const sampleSku = skus.find((s) => s.category === "sample" && s.active);
+
+  // Helper: is this week within the active NFS plan window?
+  function isInPlanWindow(weekStart: string): boolean {
+    if (!nfs.plan) return false;
+    const start = new Date(nfs.plan.fromWeek).getTime();
+    const end = start + nfs.plan.weeks * 7 * 86_400_000;
+    const w = new Date(weekStart).getTime();
+    return w >= start && w < end;
+  }
 
   const data = useMemo(() => {
     if (!computed) return [];
     return computed.weekly
       .filter((w) => w.weekStart >= win.windowStart && w.weekStart <= win.windowEnd)
       .map((w) => {
+        const inPlan = !w.isActual && isInPlanWindow(w.weekStart);
+        const samplesBaseline = inPlan ? nfs.plan!.samplesPerWeek : nfs.samplesPerWeek;
+        const papBaseline = inPlan ? nfs.plan!.papPerWeek : nfs.papPerWeek;
+        const bridgeBaseline = inPlan ? nfs.plan!.bridgePerWeek : nfs.bridgePerWeek;
+
         // Engine-driven sample units = active sample SKU's weekly volume from compute()
         const engineSamples = sampleSku
           ? w.skuValues.find((sv) => sv.sku === sampleSku.id)?.volume ?? 0
           : 0;
-        // Use the sample SKU output as the seed; PAP and Bridge scale relative to sample baseline
-        const samples = engineSamples > 0 ? engineSamples : nfs.samplesPerWeek;
-        const ratio = nfs.samplesPerWeek > 0 ? samples / nfs.samplesPerWeek : 1;
+        // For actual / non-plan weeks: keep the engine-linked behavior. For plan weeks: use the planned values directly.
+        const samples = inPlan ? samplesBaseline : engineSamples > 0 ? engineSamples : samplesBaseline;
+        const ratio = !inPlan && nfs.samplesPerWeek > 0 ? samples / nfs.samplesPerWeek : 1;
         return {
           week: w.weekStart,
           samples,
-          pap: nfs.papPerWeek * ratio,
-          bridge: nfs.bridgePerWeek * ratio,
+          pap: inPlan ? papBaseline : papBaseline * ratio,
+          bridge: inPlan ? bridgeBaseline : bridgeBaseline * ratio,
           isActual: w.isActual,
+          inPlan,
         };
       });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [computed, win, nfs, sampleSku]);
 
   // Convert engine units to expected NBRx contribution
@@ -63,7 +78,8 @@ export function NfsSamplesView() {
             <h3 className="font-heading text-h3 text-secondary">Not-for-Sale Units</h3>
             <p className="text-sm text-muted">
               Sample units come from the engine&apos;s active sample-SKU output; PAP and Bridge scale alongside.
-              Forward NBRx contribution uses the seed conversion rates.
+              Forward NBRx contribution uses the seed conversion rates. Weeks inside an active NFS plan window use the
+              planned values.
             </p>
           </div>
           <div className="text-right">
@@ -87,6 +103,7 @@ export function NfsSamplesView() {
           </ResponsiveContainer>
         </div>
       </div>
+
       <div className="card">
         <h4 className="font-heading text-h4 text-secondary mb-2">Calibration · NFS Baselines</h4>
         <p className="text-xs text-muted mb-3">Average weekly NFS units. Sample units come from the engine&apos;s active sample SKU; PAP and Bridge scale alongside.</p>
@@ -139,100 +156,105 @@ export function NfsSamplesView() {
         </table>
       </div>
 
-      <SkuMixCalibrationCard
-        skus={skus}
+      <NfsPlanCard
+        nfs={nfs}
         horizonWeeks={horizonWeeks}
-        weeklyInputs={weeklyInputs}
-        onApply={applySkuMixCustomForWeeks}
-        onClear={clearSkuMixOverrides}
+        onApply={applyNfsPlanForWeeks}
+        onClear={clearNfsPlan}
       />
     </div>
   );
 }
 
-function SkuMixCalibrationCard({
-  skus,
+function NfsPlanCard({
+  nfs,
   horizonWeeks,
-  weeklyInputs,
   onApply,
   onClear,
 }: {
-  skus: { id: string; displayName: string; category: string; active: boolean; defaultMixPct: number }[];
+  nfs: {
+    samplesPerWeek: number;
+    papPerWeek: number;
+    bridgePerWeek: number;
+    plan?: { samplesPerWeek: number; papPerWeek: number; bridgePerWeek: number; weeks: number; fromWeek: string };
+  };
   horizonWeeks: number;
-  weeklyInputs: { weekStart: string; sku: string; skuMixOverride?: number }[];
-  onApply: (weeks: number, mixBySkuId: Record<string, number>) => void;
+  onApply: (weeks: number, samplesPerWeek: number, papPerWeek: number, bridgePerWeek: number) => void;
   onClear: () => void;
 }) {
-  const activeSkus = skus.filter((s) => s.active);
-  const [draftMix, setDraftMix] = useState<Record<string, number>>(() =>
-    Object.fromEntries(activeSkus.map((s) => [s.id, s.defaultMixPct]))
-  );
-  const [applyWeeks, setApplyWeeks] = useState<number>(8);
+  const [draftSamples, setDraftSamples] = useState<number>(nfs.plan?.samplesPerWeek ?? nfs.samplesPerWeek);
+  const [draftPap, setDraftPap] = useState<number>(nfs.plan?.papPerWeek ?? nfs.papPerWeek);
+  const [draftBridge, setDraftBridge] = useState<number>(nfs.plan?.bridgePerWeek ?? nfs.bridgePerWeek);
+  const [applyWeeks, setApplyWeeks] = useState<number>(nfs.plan?.weeks ?? 8);
 
   const horizonOptions = [4, 8, 13, 26].filter((w) => w <= horizonWeeks);
   if (!horizonOptions.includes(horizonWeeks)) horizonOptions.push(horizonWeeks);
 
-  const lockedWeeks = useMemo(() => {
-    const set = new Set<string>();
-    for (const wi of weeklyInputs) if (wi.skuMixOverride !== undefined) set.add(wi.weekStart);
-    return set.size;
-  }, [weeklyInputs]);
+  const planActive = !!nfs.plan;
 
-  const draftSum = activeSkus.reduce((s, sku) => s + (draftMix[sku.id] ?? sku.defaultMixPct), 0);
-
-  function resetToDefault() {
-    setDraftMix(Object.fromEntries(activeSkus.map((s) => [s.id, s.defaultMixPct])));
+  function resetToBaseline() {
+    setDraftSamples(nfs.samplesPerWeek);
+    setDraftPap(nfs.papPerWeek);
+    setDraftBridge(nfs.bridgePerWeek);
   }
+
+  const deltaSamples = draftSamples - nfs.samplesPerWeek;
+  const deltaPap = draftPap - nfs.papPerWeek;
+  const deltaBridge = draftBridge - nfs.bridgePerWeek;
 
   return (
     <div className="card">
       <div className="flex items-baseline justify-between mb-2 flex-wrap gap-2">
-        <h4 className="font-heading text-h4 text-secondary">SKU Mix · Apply a New Mix Forward</h4>
-        <span className="text-xs text-muted">
-          {lockedWeeks > 0 ? `Locked for ${lockedWeeks} forward ${lockedWeeks === 1 ? "week" : "weeks"}` : "No mix lock applied"}
+        <div>
+          <h4 className="font-heading text-h4 text-secondary">NFS Plan · Apply Future Sample / PAP / Bridge Units</h4>
+          <p className="text-xs text-muted mt-1 max-w-3xl">
+            Plan future weekly NFS units for a forward window. Set new per-week values for Samples, PAP, and Bridge,
+            choose how many weeks the plan should run for, and click <strong>Apply Plan</strong>. The chart and the
+            forward NBRx contribution above use these planned values for the chosen window; weeks outside revert to the
+            calibration baselines.
+          </p>
+        </div>
+        <span className="text-xs text-muted whitespace-nowrap">
+          {planActive
+            ? `Plan active for ${nfs.plan!.weeks} ${nfs.plan!.weeks === 1 ? "week" : "weeks"} from ${nfs.plan!.fromWeek}`
+            : "No plan applied"}
         </span>
       </div>
-      <p className="text-xs text-muted mb-3">
-        Edit the mix per active SKU below, choose how many forward weeks the new mix should apply, and click Apply. The
-        engine will use these values for the chosen window only — weeks outside the window keep using the default mix from
-        Setup. Useful for modeling a mid-horizon launch or competitive shift.
-      </p>
+
       <table className="data-table">
         <thead>
           <tr>
-            <th>SKU</th>
             <th>Category</th>
-            <th>Default Mix %</th>
-            <th>New Mix %</th>
-            <th>Δ vs default</th>
+            <th>Baseline / Week</th>
+            <th>Planned / Week</th>
+            <th>Δ vs baseline</th>
           </tr>
         </thead>
         <tbody>
-          {activeSkus.map((sku) => {
-            const draft = draftMix[sku.id] ?? sku.defaultMixPct;
-            const delta = draft - sku.defaultMixPct;
-            return (
-              <tr key={sku.id}>
-                <td>{sku.displayName}</td>
-                <td className="capitalize">{sku.category}</td>
-                <td className="font-mono text-xs text-muted">{formatPct(sku.defaultMixPct, 1)}</td>
-                <td>
-                  <EditableNumber
-                    value={draft}
-                    onChange={(v) => setDraftMix((m) => ({ ...m, [sku.id]: v }))}
-                    format={(v) => formatPct(v, 1)}
-                    parse={(s) => parseFloat(s.replace("%", "")) / 100}
-                    className="input-cell w-20 text-right"
-                  />
-                </td>
-                <td className={"font-mono text-xs " + (Math.abs(delta) < 0.0005 ? "text-muted" : delta > 0 ? "text-success" : "text-danger")}>
-                  {Math.abs(delta) < 0.0005 ? "—" : `${delta > 0 ? "+" : ""}${(delta * 100).toFixed(1)}pp`}
-                </td>
-              </tr>
-            );
-          })}
+          <NfsPlanRow
+            label="Physician Samples"
+            baseline={nfs.samplesPerWeek}
+            draft={draftSamples}
+            setDraft={setDraftSamples}
+            delta={deltaSamples}
+          />
+          <NfsPlanRow
+            label="PAP"
+            baseline={nfs.papPerWeek}
+            draft={draftPap}
+            setDraft={setDraftPap}
+            delta={deltaPap}
+          />
+          <NfsPlanRow
+            label="Bridge Units"
+            baseline={nfs.bridgePerWeek}
+            draft={draftBridge}
+            setDraft={setDraftBridge}
+            delta={deltaBridge}
+          />
         </tbody>
       </table>
+
       <div className="flex items-center justify-between flex-wrap gap-3 mt-3 pt-3 border-t border-border">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="caption text-muted">Apply for next:</span>
@@ -242,37 +264,65 @@ function SkuMixCalibrationCard({
             className="input-cell !font-sans text-sm"
           >
             {horizonOptions.map((w) => (
-              <option key={w} value={w}>{w === horizonWeeks ? `${w} weeks (full horizon)` : `${w} weeks`}</option>
+              <option key={w} value={w}>
+                {w === horizonWeeks ? `${w} weeks (full horizon)` : `${w} weeks`}
+              </option>
             ))}
           </select>
           <button
             type="button"
-            onClick={() => onApply(applyWeeks, draftMix)}
+            onClick={() => onApply(applyWeeks, draftSamples, draftPap, draftBridge)}
             className="btn-secondary !py-1 !px-3 text-xs"
           >
-            Apply New Mix
+            Apply Plan
           </button>
-          <button
-            type="button"
-            onClick={resetToDefault}
-            className="btn-ghost !py-1 !px-3 text-xs"
-          >
+          <button type="button" onClick={resetToBaseline} className="btn-ghost !py-1 !px-3 text-xs">
             Reset draft
           </button>
-          {lockedWeeks > 0 && (
-            <button
-              type="button"
-              onClick={onClear}
-              className="btn-ghost !py-1 !px-3 text-xs"
-            >
-              Clear locked weeks
+          {planActive && (
+            <button type="button" onClick={onClear} className="btn-ghost !py-1 !px-3 text-xs">
+              Clear plan
             </button>
           )}
         </div>
-        <span className={"text-xs font-mono " + (Math.abs(draftSum - 1) < 0.005 ? "text-success" : "text-warning")}>
-          Draft sums to {(draftSum * 100).toFixed(1)}%{Math.abs(draftSum - 1) < 0.005 ? " ✓" : " (engine renormalizes to 100%)"}
-        </span>
       </div>
     </div>
+  );
+}
+
+function NfsPlanRow({
+  label,
+  baseline,
+  draft,
+  setDraft,
+  delta,
+}: {
+  label: string;
+  baseline: number;
+  draft: number;
+  setDraft: (v: number) => void;
+  delta: number;
+}) {
+  return (
+    <tr>
+      <td>{label}</td>
+      <td className="font-mono text-xs text-muted">{formatNumber(baseline)}</td>
+      <td>
+        <EditableNumber
+          value={draft}
+          onChange={setDraft}
+          format={formatNumber}
+          className="input-cell w-24 text-right"
+        />
+      </td>
+      <td
+        className={
+          "font-mono text-xs " +
+          (Math.abs(delta) < 1 ? "text-muted" : delta > 0 ? "text-success" : "text-danger")
+        }
+      >
+        {Math.abs(delta) < 1 ? "—" : `${delta > 0 ? "+" : ""}${formatNumber(Math.round(delta))}`}
+      </td>
+    </tr>
   );
 }

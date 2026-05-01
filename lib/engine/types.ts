@@ -88,6 +88,14 @@ export interface STFInputs {
     samplesConversionRate: number;
     papConversionRate: number;
     bridgeConversionRate: number;
+    // Optional forward plan: overrides the per-week samples/PAP/bridge values for a window
+    plan?: {
+      samplesPerWeek: number;
+      papPerWeek: number;
+      bridgePerWeek: number;
+      weeks: number;
+      fromWeek: string; // ISO Monday from which the plan applies
+    };
   };
   inventoryStart: {
     sku: string;
