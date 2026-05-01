@@ -43,15 +43,16 @@ export function TrendSelectionCard({ chartGrain = "annual" }: { chartGrain?: "an
       (m, aa) => (aa.year > m ? aa.year : m),
       Number.NEGATIVE_INFINITY
     );
+    const firstForecastYear = lastActualYear + 1;
     return computed.annual.map((a) => {
       const isHistorical = forecast.lrp.annualActuals.some((aa) => aa.year === a.year);
-      // Include the last historical year in the forecast series too, so the forecast line
-      // connects visually to the last actual point (bridge between actuals and forecast).
-      const includeInForecast = !isHistorical || a.year === lastActualYear;
+      // The actuals (blue) line extends one year into the forecast so the historical
+      // segment visually closes at the first forecast year (2025 → 2026 stays blue).
+      const includeInActuals = isHistorical || a.year === firstForecastYear;
       return {
         year: a.year,
-        actuals: isHistorical ? a.volume / 1000 : null,
-        forecast: includeInForecast ? a.volume / 1000 : null,
+        actuals: includeInActuals ? a.volume / 1000 : null,
+        forecast: !isHistorical ? a.volume / 1000 : null,
       };
     });
   }, [computed, forecast.lrp.annualActuals]);
@@ -60,34 +61,39 @@ export function TrendSelectionCard({ chartGrain = "annual" }: { chartGrain?: "an
     if (!computed) return [];
     if (stfGranularity === "daily") {
       const daily = computed.daily;
-      let bridgeIdx = -1;
+      let firstForecastIdx = -1;
       for (let i = 0; i < daily.length; i++) {
-        if (daily[i].date <= stfCutoff) bridgeIdx = i;
-        else break;
+        if (daily[i].date > stfCutoff) {
+          firstForecastIdx = i;
+          break;
+        }
       }
       return daily.map((d, i) => {
         const isActual = d.date <= stfCutoff;
-        // Bridge: include the last actual day in the forecast series so the lines connect.
-        const includeInForecast = !isActual || i === bridgeIdx;
+        // Extend actuals one point into the forecast so the historical line closes
+        // at the cutoff boundary (no visual gap between actuals and forecast).
+        const includeInActuals = isActual || i === firstForecastIdx;
         return {
           period: d.date,
-          actuals: isActual ? d.totalVolume : null,
-          forecast: includeInForecast ? d.totalVolume : null,
+          actuals: includeInActuals ? d.totalVolume : null,
+          forecast: !isActual ? d.totalVolume : null,
         };
       });
     }
     const weekly = computed.weekly;
-    let bridgeIdx = -1;
+    let firstForecastIdx = -1;
     for (let i = 0; i < weekly.length; i++) {
-      if (weekly[i].isActual) bridgeIdx = i;
-      else break;
+      if (!weekly[i].isActual) {
+        firstForecastIdx = i;
+        break;
+      }
     }
     return weekly.map((w, i) => {
-      const includeInForecast = !w.isActual || i === bridgeIdx;
+      const includeInActuals = w.isActual || i === firstForecastIdx;
       return {
         period: w.weekStart,
-        actuals: w.isActual ? w.totalVolume : null,
-        forecast: includeInForecast ? w.totalVolume : null,
+        actuals: includeInActuals ? w.totalVolume : null,
+        forecast: !w.isActual ? w.totalVolume : null,
       };
     });
   }, [computed, stfGranularity, stfCutoff]);
