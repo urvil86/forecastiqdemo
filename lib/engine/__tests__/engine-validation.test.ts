@@ -179,7 +179,7 @@ describe("Engine validation suite", () => {
     const events = reconcile(f2);
     expect(events.length).toBeGreaterThanOrEqual(1);
     const drift = events[0];
-    expect(["sustained-positive-variance", "warning", "critical-drift"]).toContain(drift.type === "warning" ? "warning" : drift.type);
+    expect(["sustained-positive-variance", "critical-drift", "minor-drift"]).toContain(drift.type);
     expect(drift.rolling4WeekVariancePct).toBeGreaterThan(0.04);
 
     const cleanEvents = reconcile(f);

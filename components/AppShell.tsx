@@ -41,16 +41,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       if (!meta) return;
       if (e.key === "1") {
         e.preventDefault();
-        router.push("/lrp");
+        router.push("/forecast/lrp");
       } else if (e.key === "2") {
         e.preventDefault();
-        router.push("/stf");
+        router.push("/forecast/stf");
       } else if (e.key === "3") {
         e.preventDefault();
-        router.push("/stf/connect");
+        router.push("/forecast/connect");
       } else if (e.key === "4") {
         e.preventDefault();
-        router.push("/growth");
+        router.push("/forecast/plan");
       } else if (e.key.toLowerCase() === "r") {
         e.preventDefault();
         setConfirmReset(true);
@@ -71,7 +71,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           >
             {sidebarHidden ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
           </button>
-          <Link href="/lrp" className="flex items-center gap-3">
+          <Link href="/forecast" className="flex items-center gap-3">
             <ChryselysLogo size={36} />
             <div className="font-heading font-black tracking-wide text-lg">
               Forecast<span className="text-primary">IQ</span>
@@ -108,11 +108,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {!sidebarHidden && (
         <aside className="w-64 bg-secondary text-white text-sm flex-shrink-0 sticky top-16 self-start h-[calc(100vh-4rem)] overflow-y-auto">
           <nav className="py-4">
-            <SectionHeader>Forecasting</SectionHeader>
-            <NavItem href="/lrp" active={pathname === "/lrp"} label="Long-Range Plan" />
-            <NavItem href="/stf" active={pathname === "/stf"} label="Short-Term Forecast" />
-            <NavItem href="/stf/connect" active={pathname === "/stf/connect"} label="Compare LRP vs STF" highlight />
-            <NavItem href="/growth" active={pathname === "/growth"} label="Growth Intelligence ★" highlight />
+            <SectionHeader>Workspace</SectionHeader>
+            <NavItem href="/forecast/lrp" active={pathname?.startsWith("/forecast/lrp") ?? false} label="LRP" />
+            <NavItem href="/forecast/stf" active={pathname?.startsWith("/forecast/stf") ?? false} label="STF" />
+            <NavItem href="/forecast/connect" active={pathname?.startsWith("/forecast/connect") ?? false} label="Connect" highlight />
+            <NavItem href="/forecast/opportunities" active={pathname?.startsWith("/forecast/opportunities") ?? false} label="Opportunities" />
+            <NavItem href="/forecast/plan" active={pathname?.startsWith("/forecast/plan") ?? false} label="Plan ★" highlight />
+            <NavItem href="/forecast/calc-modules" active={pathname?.startsWith("/forecast/calc-modules") ?? false} label="Calculation Modules" />
+            <NavItem href="/forecast/review/lrp" active={pathname?.startsWith("/forecast/review") ?? false} label="Review" />
 
             <div className="mt-8" />
             <SectionHeader>Demo Helpers</SectionHeader>
@@ -180,7 +183,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 onClick={() => {
                   resetToSeed();
                   setConfirmReset(false);
-                  router.push("/lrp");
+                  router.push("/forecast");
                 }}
               >
                 Reset

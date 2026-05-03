@@ -131,6 +131,162 @@ export interface PhasingProfile {
   erdByMonth: { month: string; erds: number; baseline: number }[];
 }
 
+export type LifecycleMode = "pre-launch" | "exclusivity" | "post-loe";
+
+export interface PreLaunchAnalog {
+  analogBrand: string;
+  weight: number;
+  adjustments: {
+    clinicalProfile: number;
+    competitiveContext: number;
+    marketAccess: number;
+  };
+}
+
+export interface PreLaunchConfig {
+  analogs: PreLaunchAnalog[];
+  posModel: {
+    currentStage: "preclinical" | "phase1" | "phase2" | "phase3" | "filed" | "approved";
+    milestoneProbabilities: {
+      milestone: string;
+      expectedDate: string;
+      probability: number;
+    }[];
+    cumulativeApprovalProbability: number;
+  };
+  tacticalInputs: {
+    msldDeploymentMonths: number;
+    dtcBuildSpend: number;
+    formularyTier: "preferred" | "covered" | "pa-required" | "unknown";
+    expectedLaunchDate: string;
+  };
+}
+
+export interface ExclusivityConfig {
+  monthsOfHistory: number;
+  blenderWeights: {
+    analogWeight: number;
+    trendWeight: number;
+  };
+  scReformulationConfig?: {
+    parentIvBrand: string;
+    conversionAnalogs: string[];
+    targetConversionRate: number;
+    conversionCurveYears: number;
+  };
+}
+
+export interface AccountForecast {
+  accountId: string;
+  accountName: string;
+  tier: string;
+  currentMonthlyDemand: number;
+  projectedMonthlyDemand: number[];
+  siteOfCareSegment: string;
+}
+
+export interface PostLoeConfig {
+  biosimilarEntry: {
+    expectedEntryDate: string;
+    entrantCount: number;
+    classPriceErosionCurve: {
+      yearsAfterEntry: number;
+      remainingClassPricePct: number;
+    }[];
+    shareLossCurve: {
+      yearsAfterEntry: number;
+      remainingOriginatorSharePct: number;
+    }[];
+  };
+  siteOfCareErosion: {
+    sourceOfCareSegments: {
+      segmentName: string;
+      currentSharePct: number;
+      erosionRatePerYear: number;
+      destinationSegment?: string;
+    }[];
+  };
+  accountBasedInputs: {
+    fairShareMethodology: "historical-baseline" | "access-weighted" | "capacity-constrained" | "custom";
+    allocationRatios: {
+      tierName: string;
+      ratioName: "80/20" | "70/30" | "60/40" | "custom";
+      customRatio?: { numerator: number; denominator: number };
+      capUnits?: number;
+      floorUnits?: number;
+      baselineCarveout?: boolean;
+    }[];
+    accountForecasts: AccountForecast[];
+  };
+}
+
+export interface LifecycleContext {
+  mode: LifecycleMode;
+  preLaunchConfig?: PreLaunchConfig;
+  exclusivityConfig?: ExclusivityConfig;
+  postLoeConfig?: PostLoeConfig;
+  expectedTransitionDate?: string;
+  expectedNextMode?: LifecycleMode;
+}
+
+export type DataSourceTag =
+  | "auto-pipelined"
+  | "manual"
+  | "analog-derived"
+  | "override"
+  | "derived";
+
+export interface InputCellMetadata {
+  cellId: string;
+  fieldName: string;
+  source: DataSourceTag;
+  sourceDetail?: string;
+  overrideOriginalValue?: number | string;
+  overrideChangedAt?: string;
+  overrideChangedBy?: string;
+  overrideReason?: string;
+  analogDerivation?: {
+    analogs: { analog: string; weight: number }[];
+    formula: string;
+  };
+  pipelineSource?: {
+    system: string;
+    lastSync: string;
+    nextScheduledRefresh: string;
+    isStale: boolean;
+  };
+}
+
+export interface CalcModule {
+  moduleId: string;
+  moduleName: string;
+  description: string;
+  formula: {
+    expression: string;
+    variables: {
+      varName: string;
+      source: DataSourceTag;
+      sourceDetail?: string;
+    }[];
+  };
+  brandOverrides: {
+    brand: string;
+    overrideFormula?: string;
+    overrideReason?: string;
+  }[];
+  geoOverrides: {
+    geography: string;
+    overrideFormula?: string;
+    overrideReason?: string;
+  }[];
+  constraints: {
+    minValue?: number;
+    maxValue?: number;
+    unitLabel: string;
+  };
+  defaultValue?: number;
+}
+
 export interface ConnectedForecast {
   id: string;
   brand: "Ocrevus" | "Zunovo" | "Fenebrutinib";
@@ -145,6 +301,7 @@ export interface ConnectedForecast {
   lrp: TrendFitInputs;
   stf: STFInputs;
   phasing: PhasingProfile;
+  lifecycleContext: LifecycleContext;
   version: number;
   versionLabel: string;
 }

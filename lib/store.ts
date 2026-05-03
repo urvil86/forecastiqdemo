@@ -3,10 +3,13 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import {
-  compute,
+  computeWithLifecycle,
   getSeedForecast,
+  getSeedForecastByKey,
   type ConnectedForecast,
   type ComputedForecastConnected,
+  type ForecastSeedKey,
+  type LifecycleMode,
   type VersionSnapshot,
 } from "./engine";
 import {
@@ -93,6 +96,13 @@ interface AppStore {
   loadVersion: (versionId: string) => void;
   resetToSeed: () => void;
 
+  // Lifecycle / demo seeds
+  activeSeedKey: ForecastSeedKey;
+  loadSeed: (key: ForecastSeedKey) => void;
+  setLifecycleMode: (mode: LifecycleMode) => void;
+  selectedTab: string;
+  setSelectedTab: (tab: string) => void;
+
   // Growth Intelligence
   growthIntel: {
     lastRequest: AllocationRequest | null;
@@ -162,6 +172,8 @@ export const useStore = create<AppStore>()(
       selectedZone: "setup",
       selectedSubview: "trend-selection",
       demoMode: false,
+      activeSeedKey: "ocrevus-exclusivity",
+      selectedTab: "lrp",
 
       updateLRPInput: (path, value) => {
         set((state) => ({
@@ -620,9 +632,28 @@ export const useStore = create<AppStore>()(
       },
 
       recompute: () => {
-        const result = compute(get().forecast);
+        const result = computeWithLifecycle(get().forecast);
         set({ computed: result });
       },
+
+      loadSeed: (key) => {
+        const next = getSeedForecastByKey(key);
+        set({ forecast: next, activeSeedKey: key });
+        scheduleRecompute(get);
+      },
+      setLifecycleMode: (mode) => {
+        // Lifecycle mode switching loads the matching demo seed.
+        const map: Record<LifecycleMode, ForecastSeedKey> = {
+          "pre-launch": "fenebrutinib-prelaunch",
+          exclusivity: "zunovo-exclusivity",
+          "post-loe": "ocrevus-postloe",
+        };
+        const key = map[mode];
+        const next = getSeedForecastByKey(key);
+        set({ forecast: next, activeSeedKey: key });
+        scheduleRecompute(get);
+      },
+      setSelectedTab: (tab) => set({ selectedTab: tab }),
 
       growthIntel: { lastRequest: null, lastResult: null, isComputing: false, alternativeBeingViewed: null },
       runGrowthIntel: async ({ budgetUsd, forecastYear, timelineWeeks, constraints, objective, useLLM }) => {
@@ -632,7 +663,7 @@ export const useStore = create<AppStore>()(
         const state = get();
         let computed = state.computed;
         if (!computed) {
-          computed = compute(state.forecast);
+          computed = computeWithLifecycle(state.forecast);
           set({ computed });
         }
         const result = generateRecommendation(state.forecast, computed, budgetUsd, {
@@ -684,7 +715,7 @@ export const useStore = create<AppStore>()(
         const state = get();
         let computed = state.computed;
         if (!computed) {
-          computed = compute(state.forecast);
+          computed = computeWithLifecycle(state.forecast);
           set({ computed });
         }
         const result = evaluateAllocation(state.forecast, computed, forecastYear, manualAllocations, { timelineWeeks });
@@ -752,32 +783,35 @@ export const useStore = create<AppStore>()(
     }),
     {
       name: "forecastiq-v2",
-      version: 2,
+      version: 3,
       partialize: (state) => ({
         forecast: state.forecast,
         versionHistory: state.versionHistory,
         selectedYear: state.selectedYear,
         selectedZone: state.selectedZone,
         selectedSubview: state.selectedSubview,
+        selectedTab: state.selectedTab,
         demoMode: state.demoMode,
         growthIntel: state.growthIntel,
+        activeSeedKey: state.activeSeedKey,
       }),
       migrate: ((persisted: unknown, version: number) => {
-        // Any older persisted state — drop it, the merge() below will hydrate from seed.
-        if (version < 2) return undefined;
+        // Drop any state from < v3 since we added required lifecycleContext.
+        if (version < 3) return undefined;
         return persisted;
       }) as never,
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<AppStore>;
         const seed = getSeedForecast();
-        // Validate persisted forecast has the required nested arrays — if not, fall back to seed.
         const f = p.forecast as ConnectedForecast | undefined;
         const valid =
           f &&
           Array.isArray(f.stf?.skus) &&
           Array.isArray(f.lrp?.events) &&
           Array.isArray(f.phasing?.dailyProfiles) &&
-          Array.isArray(f.phasing?.erdByMonth);
+          Array.isArray(f.phasing?.erdByMonth) &&
+          f.lifecycleContext &&
+          typeof f.lifecycleContext.mode === "string";
         return {
           ...current,
           ...p,

@@ -2,7 +2,7 @@
 
 import { LEVERS } from "@/lib/growth-intel";
 import { formatUsdShort } from "@/lib/format";
-import type { GrowthFormState } from "@/app/growth/page";
+import type { GrowthFormState } from "./types";
 import { Info, Sparkles } from "lucide-react";
 import { useState } from "react";
 
