@@ -51,7 +51,7 @@ export function GrowthResults({
 
   function saveAsScenario() {
     const id = pushAllocationToScenario();
-    if (id) router.push("/lrp");
+    if (id) router.push("/forecast/lrp/");
   }
 
   return (

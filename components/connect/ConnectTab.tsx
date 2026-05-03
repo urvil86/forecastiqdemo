@@ -47,7 +47,7 @@ export function ConnectTab() {
               and what to do about it · {forecast.brand} {forecast.geography} · v{forecast.version}
             </p>
           </div>
-          <Link href="/forecast/source-map" className="btn-secondary text-xs">
+          <Link href="/forecast/source-map/" className="btn-secondary text-xs">
             Open Authoring Source Map →
           </Link>
         </div>

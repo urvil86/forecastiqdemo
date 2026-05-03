@@ -10,7 +10,7 @@ export function PostLoeDerivativeBanner() {
       </h3>
       <p className="text-sm text-muted">
         These annual numbers are rolled up from the account-based STF.{" "}
-        <Link href="/forecast/stf" className="text-primary hover:underline font-semibold">
+        <Link href="/forecast/stf/" className="text-primary hover:underline font-semibold">
           Edit account forecasts in the STF tab →
         </Link>{" "}
         The LRP shown here is read-only and updates automatically.

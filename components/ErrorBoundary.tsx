@@ -32,7 +32,8 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
               onClick={() => {
                 if (typeof window !== "undefined") {
                   localStorage.removeItem("forecastiq-v1");
-                  window.location.href = "/lrp";
+                  localStorage.removeItem("forecastiq-v2");
+                  window.location.href = (process.env.NEXT_PUBLIC_BASE_PATH || "") + "/forecast/";
                 }
               }}
             >

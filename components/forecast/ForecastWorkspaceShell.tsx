@@ -22,31 +22,31 @@ interface TabDef {
 function tabsForMode(mode: LifecycleMode): TabDef[] {
   if (mode === "pre-launch") {
     return [
-      { id: "lrp", label: "LRP", href: "/forecast/lrp" },
-      { id: "launch-readiness", label: "Launch Readiness", href: "/forecast/launch-readiness" },
-      { id: "connect", label: "Connect", href: "/forecast/connect" },
-      { id: "plan", label: "Plan", href: "/forecast/plan" },
-      { id: "review", label: "Review", href: "/forecast/review/lrp" },
+      { id: "lrp", label: "LRP", href: "/forecast/lrp/" },
+      { id: "launch-readiness", label: "Launch Readiness", href: "/forecast/launch-readiness/" },
+      { id: "connect", label: "Connect", href: "/forecast/connect/" },
+      { id: "plan", label: "Plan", href: "/forecast/plan/" },
+      { id: "review", label: "Review", href: "/forecast/review/lrp/" },
     ];
   }
   if (mode === "post-loe") {
     return [
-      { id: "stf", label: "STF (Account-based)", href: "/forecast/stf" },
-      { id: "lrp", label: "LRP (Derivative)", href: "/forecast/lrp" },
-      { id: "connect", label: "Connect", href: "/forecast/connect" },
-      { id: "opportunities", label: "Opportunities", href: "/forecast/opportunities" },
-      { id: "plan", label: "Plan", href: "/forecast/plan" },
-      { id: "review", label: "Review", href: "/forecast/review/stf" },
+      { id: "stf", label: "STF (Account-based)", href: "/forecast/stf/" },
+      { id: "lrp", label: "LRP (Derivative)", href: "/forecast/lrp/" },
+      { id: "connect", label: "Connect", href: "/forecast/connect/" },
+      { id: "opportunities", label: "Opportunities", href: "/forecast/opportunities/" },
+      { id: "plan", label: "Plan", href: "/forecast/plan/" },
+      { id: "review", label: "Review", href: "/forecast/review/stf/" },
     ];
   }
   // exclusivity
   return [
-    { id: "lrp", label: "LRP", href: "/forecast/lrp" },
-    { id: "stf", label: "STF", href: "/forecast/stf" },
-    { id: "connect", label: "Connect", href: "/forecast/connect" },
-    { id: "opportunities", label: "Opportunities", href: "/forecast/opportunities" },
-    { id: "plan", label: "Plan", href: "/forecast/plan" },
-    { id: "review", label: "Review", href: "/forecast/review/lrp" },
+    { id: "lrp", label: "LRP", href: "/forecast/lrp/" },
+    { id: "stf", label: "STF", href: "/forecast/stf/" },
+    { id: "connect", label: "Connect", href: "/forecast/connect/" },
+    { id: "opportunities", label: "Opportunities", href: "/forecast/opportunities/" },
+    { id: "plan", label: "Plan", href: "/forecast/plan/" },
+    { id: "review", label: "Review", href: "/forecast/review/lrp/" },
   ];
 }
 
@@ -65,9 +65,11 @@ export function ForecastWorkspaceShell({ children }: { children: ReactNode }) {
   const mode = forecast.lifecycleContext?.mode ?? "exclusivity";
   const tabs = useMemo(() => tabsForMode(mode), [mode]);
 
-  // Pick the active tab from the URL
+  // Pick the active tab from the URL — normalize trailing slashes
   const activeTabId = useMemo(() => {
-    const found = tabs.find((t) => pathname?.startsWith(t.href));
+    const norm = (s: string) => (s.endsWith("/") ? s.slice(0, -1) : s);
+    const cur = norm(pathname ?? "");
+    const found = tabs.find((t) => cur.startsWith(norm(t.href)));
     return found?.id ?? tabs[0]?.id;
   }, [pathname, tabs]);
 
@@ -77,9 +79,9 @@ export function ForecastWorkspaceShell({ children }: { children: ReactNode }) {
     setLifecycleMode(nextMode);
     // Land on default tab for new mode
     const defaults: Record<LifecycleMode, string> = {
-      "pre-launch": "/forecast/lrp",
-      exclusivity: "/forecast/stf",
-      "post-loe": "/forecast/stf",
+      "pre-launch": "/forecast/lrp/",
+      exclusivity: "/forecast/stf/",
+      "post-loe": "/forecast/stf/",
     };
     setTimeout(() => {
       router.push(defaults[nextMode]);
@@ -93,9 +95,9 @@ export function ForecastWorkspaceShell({ children }: { children: ReactNode }) {
     loadSeed(key);
     const found = DEMO_SCENARIOS.find((s) => s.key === key);
     const defaults: Record<LifecycleMode, string> = {
-      "pre-launch": "/forecast/lrp",
-      exclusivity: "/forecast/stf",
-      "post-loe": "/forecast/stf",
+      "pre-launch": "/forecast/lrp/",
+      exclusivity: "/forecast/stf/",
+      "post-loe": "/forecast/stf/",
     };
     setTimeout(() => {
       if (found) router.push(defaults[found.mode]);
@@ -105,11 +107,11 @@ export function ForecastWorkspaceShell({ children }: { children: ReactNode }) {
 
   // Whenever route is just `/forecast`, push to the default tab for current mode
   useEffect(() => {
-    if (pathname === "/forecast") {
+    if (pathname === "/forecast" || pathname === "/forecast/") {
       const defaults: Record<LifecycleMode, string> = {
-        "pre-launch": "/forecast/lrp",
-        exclusivity: "/forecast/stf",
-        "post-loe": "/forecast/stf",
+        "pre-launch": "/forecast/lrp/",
+        exclusivity: "/forecast/stf/",
+        "post-loe": "/forecast/stf/",
       };
       router.replace(defaults[mode]);
     }

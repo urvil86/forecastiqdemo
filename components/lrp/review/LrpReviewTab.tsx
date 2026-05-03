@@ -98,7 +98,7 @@ export function LrpReviewTab({ embeddedInWorkspace = false }: { embeddedInWorksp
               <Download size={14} /> Export Review (PPT)
             </button>
             {!embeddedInWorkspace && (
-              <Link href="/forecast/lrp" className="btn-ghost">
+              <Link href="/forecast/lrp/" className="btn-ghost">
                 ← Back to Authoring
               </Link>
             )}
