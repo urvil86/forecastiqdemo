@@ -6,27 +6,27 @@ import { useStore } from "@/lib/store";
 import { Sparkles, X, Send, Trash2, AlertCircle, ArrowDownToLine, BookOpen, Bookmark, MessageSquare } from "lucide-react";
 
 const SUGGESTIONS_BY_PATH: Record<string, string[]> = {
-  "/lrp": [
+  "/forecast/lrp": [
     "What's driving 2027 net sales?",
     "Update product share for 2028 to 0.22",
     "Compare current to last saved version",
   ],
-  "/lrp/review": [
+  "/forecast/review/lrp": [
     "Why did 2030 drop $200M between v3 and v4?",
     "Which driver moves the forecast the most?",
     "Show peak-year drift across versions",
   ],
-  "/stf": [
+  "/forecast/stf": [
     "Why are we behind plan this month?",
     "Override week of 2026-04-20 to 4,000 units",
     "Surface underperforming territories",
   ],
-  "/stf/connect": [
+  "/forecast/connect": [
     "Run Seek-to-Forecast for $5.8B in 2027",
     "Where is STF diverging from LRP?",
     "Why is Q2 in drift status?",
   ],
-  "/growth": [
+  "/forecast/plan": [
     "Run $25M Balanced optimization",
     "What's the marginal ROI at $40M?",
     "Why is DTC excluded at $10M?",
@@ -37,7 +37,7 @@ function suggestionsFor(path: string): string[] {
   for (const key of Object.keys(SUGGESTIONS_BY_PATH).sort((a, b) => b.length - a.length)) {
     if (path.startsWith(key)) return SUGGESTIONS_BY_PATH[key];
   }
-  return SUGGESTIONS_BY_PATH["/lrp"];
+  return SUGGESTIONS_BY_PATH["/forecast/lrp"];
 }
 
 export function AIAgentToggle() {
@@ -63,7 +63,7 @@ export function AIAgent() {
   const sendAgentMessage = useStore((s) => s.sendAgentMessage);
   const typing = useStore((s) => s.agentTyping);
   const clearAgentMessages = useStore((s) => s.clearAgentMessages);
-  const pathname = usePathname() ?? "/lrp";
+  const pathname = usePathname() ?? "/forecast/lrp";
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement | null>(null);
 

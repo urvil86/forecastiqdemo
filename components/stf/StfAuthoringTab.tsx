@@ -33,7 +33,7 @@ export function StfAuthoringTab({ embeddedInWorkspace = false }: { embeddedInWor
           </h1>
         </div>
         {!embeddedInWorkspace && (
-          <Link href="/forecast/connect" className="btn-secondary">Compare LRP vs STF →</Link>
+          <Link href="/forecast/connect/" className="btn-secondary">Compare LRP vs STF →</Link>
         )}
       </div>
       <p className="text-xs text-muted">

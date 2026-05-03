@@ -50,7 +50,7 @@ export function OpportunitiesTab() {
             <div className="text-h2 text-primary font-bold mb-2">{formatUsdShort(c.impact)}</div>
             <h3 className="font-heading text-h3 text-secondary mb-2">{c.title}</h3>
             <p className="text-sm text-muted mb-4">{c.description}</p>
-            <Link href="/forecast/plan" className="btn-secondary text-xs">
+            <Link href="/forecast/plan/" className="btn-secondary text-xs">
               {c.cta}
             </Link>
           </div>

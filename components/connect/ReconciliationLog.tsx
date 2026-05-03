@@ -19,8 +19,8 @@ export function ReconciliationLog() {
         title="Reconciliation Event Log"
         subtitle="Chronological feed of past reconciliation events."
         right={
-          <Link href="/growth" className="btn-secondary flex items-center gap-1">
-            <Sparkles size={14} /> View Growth Intelligence →
+          <Link href="/forecast/plan/" className="btn-secondary flex items-center gap-1">
+            <Sparkles size={14} /> View Plan Mode →
           </Link>
         }
       />

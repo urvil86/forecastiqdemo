@@ -78,7 +78,7 @@ export function LrpAuthoringTab({ embeddedInWorkspace = false }: { embeddedInWor
         {!embeddedInWorkspace && (
           <div className="flex items-center gap-2">
             <button className="btn-secondary" onClick={() => setShowSave(true)}>Save Version</button>
-            <Link href={embeddedInWorkspace ? "/forecast/review/lrp" : "/lrp/review"} className="btn-secondary">
+            <Link href={embeddedInWorkspace ? "/forecast/review/lrp/" : "/forecast/review/lrp/"} className="btn-secondary">
               Review Forecast
             </Link>
             <button className="btn-ghost" onClick={() => setShowVersionDrawer(true)}>Version History</button>

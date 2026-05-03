@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 export default function Home() {
   const router = useRouter();
   useEffect(() => {
-    router.replace("/forecast");
+    router.replace("/forecast/");
   }, [router]);
   return null;
 }
