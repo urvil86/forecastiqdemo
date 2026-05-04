@@ -304,13 +304,24 @@ export function getFenebrutinibPreLaunchSeed(): ConnectedForecast {
       skus: [
         {
           id: "fenebrutinib-150mg",
-          displayName: "Fenebrutinib 150mg",
+          displayName: "Fenebrutinib 150mg (oral, daily)",
           category: "commercial",
-          active: false,
+          // Active so the engine emits weekly/daily volumes for the
+          // post-launch window. Pre-launch products still need an
+          // active SKU to derive a trend; "no actuals" is captured
+          // by the empty annualActuals + future actualsCutoffDate,
+          // not by deactivating the SKU.
+          active: true,
           defaultMixPct: 1.0,
+          relativePriceMultiplier: 1.0,
         },
       ],
-      inventoryStart: [],
+      inventoryStart: [
+        // Seed an opening inventory position at launch so DOH / inventory
+        // visualizations don't render empty post-activation.
+        { sku: "fenebrutinib-150mg", tier: "wholesaler", units: 18000 },
+        { sku: "fenebrutinib-150mg", tier: "specialty-pharmacy", units: 6000 },
+      ],
     },
     lifecycleContext: {
       mode: "pre-launch",
