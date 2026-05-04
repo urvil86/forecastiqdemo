@@ -175,6 +175,17 @@ interface AppStore {
     notify?: { name: string; email: string }[];
     label?: string;
   }) => VersionSnapshot | null;
+  /**
+   * Execute a reconciliation action end-to-end: mutate the forecast as
+   * the action prescribes, recompute, then save a snapshot tagged with
+   * the appropriate scope (lrp / stf / full). Returns the snapshot so
+   * the modal can navigate to the version log.
+   */
+  executeReconciliationAction: (ctx: {
+    action: ReconciliationAction;
+    reason?: string;
+    notify?: { name: string; email: string }[];
+  }) => VersionSnapshot | null;
   restoreSnapshot: (snapshotId: string) => void;
   /** Compute current variance status against current threshold */
   varianceStatus: () => {
@@ -933,6 +944,166 @@ export const useStore = create<AppStore>()(
         }));
         return snap;
       },
+      executeReconciliationAction: (ctx) => {
+        const state = get();
+        const computedNow = state.computed ?? computeWithLifecycle(state.forecast);
+        const variance = computeVariance(computedNow);
+        const cycleYear = parseInt(
+          state.forecast.timeframe.forecastStart.slice(0, 4),
+        );
+        const cycleName = state.forecast.cycleName ?? "current cycle";
+        const now = new Date().toISOString();
+
+        let updated: ConnectedForecast = state.forecast;
+        let scope: ForecastScope = "full";
+        let label = "Reconciliation snapshot";
+        let nextLrpV = state.forecast.lrpVersion ?? state.forecast.version;
+        let nextStfV = state.forecast.stfVersion ?? state.forecast.version;
+
+        if (ctx.action === "refresh-lrp") {
+          // Pull STF reality up into LRP — scale brand share for cycle year
+          // and next year by the implied rolling variance. If the engine
+          // shows a positive variance (STF running hot), brand share moves
+          // up; if negative, share moves down.
+          const scale = 1 + (variance.rolling13Week || 0);
+          const safeScale = Math.max(0.5, Math.min(2.0, scale));
+          const targetYears = new Set([cycleYear, cycleYear + 1]);
+          updated = { ...state.forecast };
+          if (updated.epidemiologyInputs) {
+            updated.epidemiologyInputs = {
+              ...updated.epidemiologyInputs,
+              yearly: updated.epidemiologyInputs.yearly.map((y) =>
+                targetYears.has(y.year)
+                  ? {
+                      ...y,
+                      brandSharePct: Math.max(
+                        0,
+                        Math.min(100, y.brandSharePct * safeScale),
+                      ),
+                    }
+                  : y,
+              ),
+            };
+          }
+          if (updated.marketShareInputs) {
+            updated.marketShareInputs = {
+              ...updated.marketShareInputs,
+              yearly: updated.marketShareInputs.yearly.map((y) =>
+                targetYears.has(y.year)
+                  ? {
+                      ...y,
+                      brandSharePct: Math.max(
+                        0,
+                        Math.min(100, y.brandSharePct * safeScale),
+                      ),
+                    }
+                  : y,
+              ),
+            };
+          }
+          scope = "lrp";
+          nextLrpV = nextLrpV + 1;
+          label = `Refreshed LRP from STF · LRP v${nextLrpV} · ${cycleName}`;
+        } else if (ctx.action === "adjust-stf") {
+          // Push LRP target down into STF — write per-SKU weekly overrides
+          // on the next 13 forward weeks at currentVol × (1 / (1 + variance))
+          // so the run-rate moves toward the LRP target.
+          const scale = 1 / (1 + (variance.rolling13Week || 0));
+          const safeScale = Math.max(0.5, Math.min(2.0, scale));
+          const cutoff = new Date(
+            state.forecast.stf.actualsCutoffDate,
+          ).getTime();
+          const forwardWeeks = computedNow.weekly
+            .filter((w) => new Date(w.weekStart).getTime() >= cutoff)
+            .slice(0, 13);
+          const inputs = state.forecast.stf.weeklyInputs.slice();
+          for (const w of forwardWeeks) {
+            for (const skuVal of w.skuValues) {
+              const target = skuVal.volume * safeScale;
+              const idx = inputs.findIndex(
+                (wi) =>
+                  wi.weekStart === w.weekStart && wi.sku === skuVal.sku,
+              );
+              if (idx >= 0) {
+                inputs[idx] = { ...inputs[idx], override: target };
+              } else {
+                inputs.push({
+                  weekStart: w.weekStart,
+                  sku: skuVal.sku,
+                  trendValue: skuVal.volume,
+                  override: target,
+                });
+              }
+            }
+          }
+          updated = {
+            ...state.forecast,
+            stf: { ...state.forecast.stf, weeklyInputs: inputs },
+          };
+          scope = "stf";
+          nextStfV = nextStfV + 1;
+          label = `Adjusted STF to LRP target · STF v${nextStfV} · ${cycleName}`;
+        } else {
+          // document-accept: no forecast mutation, just an audit snapshot.
+          // Counts as full-scope (acknowledges both sides) and bumps neither.
+          scope = "full";
+          label = `Documented & accepted variance · ${cycleName}`;
+        }
+
+        // Re-compute on the (possibly mutated) forecast and bump versions
+        const nextUmbrella = Math.max(nextLrpV, nextStfV);
+        const isMutating =
+          ctx.action === "refresh-lrp" || ctx.action === "adjust-stf";
+        if (isMutating) {
+          updated = {
+            ...updated,
+            version: nextUmbrella,
+            versionLabel: label,
+            lrpVersion: nextLrpV,
+            stfVersion: nextStfV,
+            lrpVersionLabel:
+              scope === "lrp"
+                ? `LRP v${nextLrpV} · ${cycleName}`
+                : updated.lrpVersionLabel,
+            stfVersionLabel:
+              scope === "stf"
+                ? `STF v${nextStfV} · ${cycleName}`
+                : updated.stfVersionLabel,
+            lrpLastSubmittedAt:
+              scope === "lrp" ? now : updated.lrpLastSubmittedAt,
+            stfLastSubmittedAt:
+              scope === "stf" ? now : updated.stfLastSubmittedAt,
+            draftStatus: "submitted",
+            lastSubmittedAt: now,
+            lastSubmittedBy: state.currentDemoUser,
+          };
+        }
+
+        const computed = computeWithLifecycle(updated);
+        const newVariance = computeVariance(computed);
+        const snap = saveSnapshot(updated, computed, {
+          user: state.currentDemoUser,
+          triggerType: "reconciliation",
+          triggerReason: "variance-breach",
+          action: ctx.action,
+          reason: ctx.reason,
+          notify: ctx.notify,
+          threshold: state.threshold,
+          variance: newVariance,
+          label,
+          version: isMutating ? nextUmbrella : state.forecast.version,
+        });
+        snap.scope = scope;
+
+        set((s) => ({
+          forecast: updated,
+          computed,
+          versionHistory: [snap, ...s.versionHistory],
+        }));
+
+        return snap;
+      },
+
       restoreSnapshot: (snapshotId) => {
         const state = get();
         const snap = state.versionHistory.find((v) => v.id === snapshotId);
