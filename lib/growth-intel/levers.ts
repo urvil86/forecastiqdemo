@@ -123,6 +123,28 @@ export const LEVERS: Lever[] = [
     riskScore: "low",
     benchmarkSource: "IDN account targeting program ROI benchmarks, MS specialty therapeutics",
   },
+  {
+    id: "site-of-care-optimization",
+    category: "commercial-optimization",
+    displayName: "Site-of-Care Optimization",
+    description:
+      "Migrate Top-50 IDN volume to community infusion suites; reduce cost-of-care friction and capture incremental volume retention.",
+    unitOfInvestment: "$M program investment",
+    minIntensity: 1,
+    maxIntensity: 25,
+    unitCostUsd: 1_000_000,
+    elasticityShape: "logarithmic",
+    elasticityParams: {
+      baselineImpact: 0.0018,
+      saturationImpact: 0.0085,
+      decayRate: 0.4,
+    },
+    rampWeeks: 8,
+    durationWeeks: 52,
+    riskScore: "low",
+    benchmarkSource:
+      "Community infusion migration retention benchmarks, MS specialty therapeutics 2022-2024",
+  },
 ];
 
 export function getLever(id: string): Lever | undefined {

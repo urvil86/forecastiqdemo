@@ -1,6 +1,7 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useStore } from "@/lib/store";
 import { GrowthHeader } from "@/components/growth/GrowthHeader";
 import { SetupCard } from "@/components/growth/GrowthInputCards";
@@ -37,6 +38,7 @@ export function PlanModeTab() {
 }
 
 function PlanModeInner() {
+  const params = useSearchParams();
   const [form, setForm] = useState<GrowthFormState>(DEFAULT_FORM);
   const [manualForm, setManualForm] = useState<ManualFormState>(DEFAULT_MANUAL_FORM);
   const computed = useStore((s) => s.computed);
@@ -46,10 +48,66 @@ function PlanModeInner() {
   const runManualEvaluation = useStore((s) => s.runManualEvaluation);
   const clearGrowthIntel = useStore((s) => s.clearGrowthIntel);
   const [resultsStale, setResultsStale] = useState(false);
+  const handoffApplied = useRef(false);
 
   useEffect(() => {
     if (!computed) recompute();
   }, [computed, recompute]);
+
+  // ── Opportunity handoff (from /forecast/opportunities/) ──
+  // URL params we recognize:
+  //   ?budget=18500000             — pre-fill budget
+  //   ?lever=site-of-care-optimization — pre-select lever in manual allocation
+  //   ?action=optimize             — auto-run optimizer
+  //   ?action=manual               — auto-run manual evaluation with full
+  //                                  budget on the chosen lever
+  //   ?label=Site-of-care          — display title (informational)
+  useEffect(() => {
+    if (!params || handoffApplied.current) return;
+    const budgetStr = params.get("budget");
+    const lever = params.get("lever") as LeverId | null;
+    const action = params.get("action");
+    if (!budgetStr && !lever && !action) return;
+    handoffApplied.current = true;
+
+    const budget = budgetStr ? parseInt(budgetStr) : DEFAULT_FORM.budgetUsd;
+    if (Number.isFinite(budget) && budget > 0) {
+      setForm((f) => ({ ...f, budgetUsd: budget }));
+    }
+    if (lever) {
+      const sliders = { ...DEFAULT_MANUAL_FORM.perLeverInvestmentUsd } as Record<
+        LeverId,
+        number
+      >;
+      sliders[lever] = budget;
+      setManualForm((f) => ({
+        ...f,
+        perLeverInvestmentUsd: sliders,
+      }));
+    }
+    if (action === "optimize" || action === "manual") {
+      // Defer to next tick so state setters land first
+      setTimeout(() => {
+        if (action === "optimize") {
+          runGrowthIntel({
+            budgetUsd: budget,
+            forecastYear: DEFAULT_FORM.forecastYear,
+            timelineWeeks: DEFAULT_FORM.timelineWeeks,
+            constraints: [],
+            objective: "max-revenue",
+          });
+        } else {
+          runManualEvaluation({
+            forecastYear: DEFAULT_FORM.forecastYear,
+            timelineWeeks: DEFAULT_FORM.timelineWeeks,
+            manualAllocations: lever
+              ? [{ leverId: lever, investmentUsd: budget }]
+              : [],
+          });
+        }
+      }, 100);
+    }
+  }, [params, runGrowthIntel, runManualEvaluation]);
 
   const baselineRevenue =
     computed?.annual.find((a) => a.year === form.forecastYear)?.netSales ?? 0;

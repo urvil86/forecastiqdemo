@@ -11,6 +11,9 @@ import { EpidemiologyTable } from "./EpidemiologyTable";
 import { MarketShareTable } from "./MarketShareTable";
 import { PreLaunchOverlayCard } from "./PreLaunchOverlayCard";
 import { LoeOverlayCard } from "./LoeOverlayCard";
+import { LrpEventsCard } from "./LrpEventsCard";
+import { StfSetupCard } from "./StfSetupCard";
+import { DriftPanel } from "./DriftPanel";
 import { BuildZone } from "@/components/stf/BuildZone";
 import { validateInput, summary, type InputIssue } from "./validation";
 
@@ -194,6 +197,9 @@ export function InputPage() {
         </div>
 
         <div className="p-8 space-y-12">
+          {/* Drift panel — shows changes vs prior version */}
+          <DriftPanel />
+
           {/* Section 1: Setup */}
           <SetupCard />
 
@@ -216,6 +222,10 @@ export function InputPage() {
             ) : (
               <MarketShareTable />
             )}
+
+            <div className="mt-8">
+              <LrpEventsCard />
+            </div>
 
             {stage === "pre-launch" && (
               <div className="mt-8">
@@ -242,7 +252,15 @@ export function InputPage() {
               </p>
             </div>
             {stfVisible ? (
-              <BuildZone />
+              <div className="space-y-8">
+                <StfSetupCard />
+                <div>
+                  <h4 className="font-heading text-h4 text-secondary mb-2">
+                    3.4 Build &amp; Weekly Authoring
+                  </h4>
+                  <BuildZone />
+                </div>
+              </div>
             ) : (
               <div className="card border-l-4 border-primary">
                 <h4 className="font-heading text-h4 text-secondary mb-2">

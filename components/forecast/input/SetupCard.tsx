@@ -23,7 +23,6 @@ export function SetupCard() {
   const setLrpMethodologyV26 = useStore((s) => s.setLrpMethodologyV26);
   const setCycleName = useStore((s) => s.setCycleName);
   const setCycleHorizonYears = useStore((s) => s.setCycleHorizonYears);
-  const currentDemoUser = useStore((s) => s.currentDemoUser);
 
   const [pendingStage, setPendingStage] = useState<LifecycleStage | null>(null);
   const [pendingMethodology, setPendingMethodology] =
@@ -70,18 +69,9 @@ export function SetupCard() {
             </div>
           </Field>
           <Field label="Geography">
-            <select
-              value={forecast.geography}
-              className="input-cell !font-sans w-full"
-              onChange={() => {
-                /* placeholder — single geography in demo */
-              }}
-            >
-              <option value="US">United States</option>
-              <option value="EU5">EU5</option>
-              <option value="Japan">Japan</option>
-              <option value="RoW">RoW</option>
-            </select>
+            <div className="px-2 py-1.5 bg-background border border-border rounded text-sm">
+              United States
+            </div>
           </Field>
           <Field label="Forecast cycle">
             <input
@@ -130,8 +120,7 @@ export function SetupCard() {
         <div className="space-y-3">
           <Field label="Owner">
             <div className="px-2 py-1.5 bg-background border border-border rounded text-sm">
-              {currentDemoUser.name} ·{" "}
-              <span className="text-muted text-xs">{currentDemoUser.role}</span>
+              Forecaster
             </div>
           </Field>
           <Field label="Cycle start date">
