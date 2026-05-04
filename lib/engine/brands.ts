@@ -5,11 +5,15 @@ export const BRAND_CONFIGS: Record<BrandKey, BrandConfig> = {
     brand: "Ocrevus",
     defaultMethodology: "TrendFit",
     stfActive: true,
+    defaultStage: "growth",
+    defaultMethodologyV26: "epidemiology",
   },
   Zunovo: {
     brand: "Zunovo",
     defaultMethodology: "Hybrid",
     stfActive: true,
+    defaultStage: "growth",
+    defaultMethodologyV26: "market-share",
     hybridConfig: {
       primaryMethodology: "TrendFit",
       secondaryMethodology: "AnalogWeighted",
@@ -20,6 +24,8 @@ export const BRAND_CONFIGS: Record<BrandKey, BrandConfig> = {
     brand: "Fenebrutinib",
     defaultMethodology: "AnalogWeighted",
     stfActive: false,
+    defaultStage: "pre-launch",
+    defaultMethodologyV26: "epidemiology",
     analogConfig: {
       analogs: [
         { brand: "Kesimpta", weight: 0.45 },

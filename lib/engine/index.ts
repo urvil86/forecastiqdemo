@@ -49,3 +49,22 @@ export {
   type SaveSnapshotContext,
   type VarianceStatus,
 } from "./snapshot";
+
+// v2.6 Input-First methodology helpers and seeds
+export {
+  computeEpidemiology,
+  computeMarketShare,
+  applyPreLaunchOverlay,
+  applyLoeOverlay,
+  computeV26Annual,
+  type AnnualRevenueRow,
+} from "./methodologyV26";
+
+export {
+  seedOcrevusEpidemiology,
+  seedZunovoMarketShare,
+  seedFenebrutinibEpidemiology,
+  seedFenebrutinibPreLaunchOverlay,
+  seedOcrevusLoeOverlay,
+  v26InputsForBrand,
+} from "./seedV26";

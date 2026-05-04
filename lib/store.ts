@@ -10,6 +10,8 @@ import {
   restoreFromSnapshot,
   computeVariance,
   statusForVariance,
+  v26InputsForBrand,
+  seedOcrevusLoeOverlay,
   DEMO_USERS,
   DEFAULT_DEMO_USER,
   DEFAULT_THRESHOLD,
@@ -18,6 +20,8 @@ import {
   type DemoUser,
   type ForecastSeedKey,
   type LifecycleMode,
+  type LifecycleStage,
+  type LrpMethodologyV26,
   type ReconciliationAction,
   type ThresholdConfig,
   type VarianceStatus,
@@ -195,6 +199,35 @@ interface AppStore {
     payload: UploadPayload,
     options: { mode: "active" | "scenario"; reason?: string },
   ) => void;
+
+  // v2.6 Input-First actions
+  setLifecycleStage: (stage: LifecycleStage) => void;
+  setLrpMethodologyV26: (methodology: LrpMethodologyV26) => void;
+  updateEpidemiologyCell: (
+    year: number,
+    field: keyof NonNullable<ConnectedForecast["epidemiologyInputs"]>["yearly"][number],
+    value: number,
+  ) => void;
+  updateMarketShareCell: (
+    year: number,
+    field: "totalMarketUsdM" | "totalMarketUnitsK" | "brandSharePct",
+    value: number,
+  ) => void;
+  updatePricingCell: (
+    year: number,
+    field: "grossPriceUsd" | "tradeDiscountPct" | "reserveRatePct",
+    value: number,
+  ) => void;
+  updatePreLaunchOverlay: (
+    patch: Partial<NonNullable<ConnectedForecast["preLaunchOverlay"]>>,
+  ) => void;
+  updateLoeOverlay: (
+    patch: Partial<NonNullable<ConnectedForecast["loeOverlay"]>>,
+  ) => void;
+  setDraftStatus: (status: "draft" | "submitted") => void;
+  submitForecast: () => void;
+  setCycleName: (name: string) => void;
+  setCycleHorizonYears: (years: number) => void;
 }
 
 let recomputeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -992,6 +1025,178 @@ export const useStore = create<AppStore>()(
         });
       },
 
+      // ─── v2.6 Input-First actions ─────────────────────────────────
+      setLifecycleStage: (stage) => {
+        set((s) => {
+          const next = { ...s.forecast, lifecycleStage: stage } as ConnectedForecast;
+          // Stage-specific overlay defaults
+          if (stage === "loe" && !next.loeOverlay) {
+            next.loeOverlay = seedOcrevusLoeOverlay();
+          }
+          if (stage !== "loe") next.loeOverlay = undefined;
+          if (stage === "pre-launch" && !next.preLaunchOverlay) {
+            const defaults = v26InputsForBrand(s.forecast.brand);
+            next.preLaunchOverlay = defaults.preLaunchOverlay;
+          }
+          if (stage !== "pre-launch") next.preLaunchOverlay = undefined;
+          // Editing post-submit flips to draft
+          if (next.draftStatus === "submitted") next.draftStatus = "draft";
+          return { forecast: next };
+        });
+        scheduleRecompute(get);
+      },
+      setLrpMethodologyV26: (methodology) => {
+        set((s) => {
+          const next = { ...s.forecast, lrpMethodology: methodology } as ConnectedForecast;
+          // Clear the inputs for the off-methodology and (re-)seed the active one
+          const defaults = v26InputsForBrand(s.forecast.brand);
+          if (methodology === "epidemiology") {
+            next.epidemiologyInputs =
+              s.forecast.epidemiologyInputs ?? defaults.epidemiologyInputs;
+            next.marketShareInputs = undefined;
+          } else {
+            next.marketShareInputs =
+              s.forecast.marketShareInputs ?? defaults.marketShareInputs;
+            next.epidemiologyInputs = undefined;
+          }
+          if (next.draftStatus === "submitted") next.draftStatus = "draft";
+          return { forecast: next };
+        });
+        scheduleRecompute(get);
+      },
+      updateEpidemiologyCell: (year, field, value) => {
+        set((s) => {
+          const inputs = s.forecast.epidemiologyInputs;
+          if (!inputs) return s;
+          const yearly = inputs.yearly.map((y) =>
+            y.year === year ? { ...y, [field]: value } : y,
+          );
+          return {
+            forecast: {
+              ...s.forecast,
+              epidemiologyInputs: { ...inputs, yearly },
+              draftStatus:
+                s.forecast.draftStatus === "submitted" ? "draft" : s.forecast.draftStatus,
+            },
+          };
+        });
+      },
+      updateMarketShareCell: (year, field, value) => {
+        set((s) => {
+          const inputs = s.forecast.marketShareInputs;
+          if (!inputs) return s;
+          const yearly = inputs.yearly.map((y) =>
+            y.year === year ? { ...y, [field]: value } : y,
+          );
+          return {
+            forecast: {
+              ...s.forecast,
+              marketShareInputs: { ...inputs, yearly },
+              draftStatus:
+                s.forecast.draftStatus === "submitted" ? "draft" : s.forecast.draftStatus,
+            },
+          };
+        });
+      },
+      updatePricingCell: (year, field, value) => {
+        set((s) => {
+          const epi = s.forecast.epidemiologyInputs;
+          const ms = s.forecast.marketShareInputs;
+          const updateBucket = (bucket: { yearly: { year: number }[] }) => {
+            const yearly = bucket.yearly.map((y) =>
+              y.year === year ? { ...y, [field]: value } : y,
+            );
+            return { ...bucket, yearly };
+          };
+          const next: ConnectedForecast = { ...s.forecast };
+          if (epi) {
+            next.epidemiologyInputs = {
+              ...epi,
+              pricing: updateBucket(epi.pricing) as typeof epi.pricing,
+            };
+          }
+          if (ms) {
+            next.marketShareInputs = {
+              ...ms,
+              pricing: updateBucket(ms.pricing) as typeof ms.pricing,
+            };
+          }
+          if (next.draftStatus === "submitted") next.draftStatus = "draft";
+          return { forecast: next };
+        });
+      },
+      updatePreLaunchOverlay: (patch) => {
+        set((s) => {
+          const cur = s.forecast.preLaunchOverlay;
+          if (!cur) return s;
+          return {
+            forecast: {
+              ...s.forecast,
+              preLaunchOverlay: { ...cur, ...patch },
+              draftStatus:
+                s.forecast.draftStatus === "submitted" ? "draft" : s.forecast.draftStatus,
+            },
+          };
+        });
+      },
+      updateLoeOverlay: (patch) => {
+        set((s) => {
+          const cur = s.forecast.loeOverlay;
+          if (!cur) return s;
+          return {
+            forecast: {
+              ...s.forecast,
+              loeOverlay: { ...cur, ...patch },
+              draftStatus:
+                s.forecast.draftStatus === "submitted" ? "draft" : s.forecast.draftStatus,
+            },
+          };
+        });
+      },
+      setDraftStatus: (status) => {
+        set((s) => ({
+          forecast: { ...s.forecast, draftStatus: status },
+        }));
+      },
+      setCycleName: (name) => {
+        set((s) => ({ forecast: { ...s.forecast, cycleName: name } }));
+      },
+      setCycleHorizonYears: (years) => {
+        set((s) => ({ forecast: { ...s.forecast, cycleHorizonYears: years } }));
+      },
+      submitForecast: () => {
+        const state = get();
+        // Run compute first to update views
+        const computed = computeWithLifecycle(state.forecast);
+        const variance = computeVariance(computed);
+        const next = state.forecast.version + 1;
+        const cycleName = state.forecast.cycleName ?? "current cycle";
+        const versionLabel = `Submitted forecast cycle ${cycleName}`;
+        const updated: ConnectedForecast = {
+          ...state.forecast,
+          version: next,
+          versionLabel,
+          draftStatus: "submitted",
+          lastSubmittedAt: new Date().toISOString(),
+          lastSubmittedBy: state.currentDemoUser,
+        };
+        const snap = saveSnapshot(updated, computed, {
+          user: state.currentDemoUser,
+          triggerType: "manual-save",
+          triggerReason: "user-initiated",
+          threshold: state.threshold,
+          variance,
+          label: versionLabel,
+          reason: `Submitted forecast cycle ${cycleName}`,
+          version: next,
+        });
+        set((s) => ({
+          forecast: updated,
+          computed,
+          versionHistory: [snap, ...s.versionHistory],
+        }));
+      },
+
       // ─── v2.5 Addendum: Excel upload apply ───────────────────────
       applyUpload: (payload, options) => {
         const state = get();
@@ -1026,7 +1231,7 @@ export const useStore = create<AppStore>()(
     }),
     {
       name: "forecastiq-v2",
-      version: 5,
+      version: 6,
       partialize: (state) => ({
         forecast: state.forecast,
         versionHistory: state.versionHistory,
@@ -1042,9 +1247,10 @@ export const useStore = create<AppStore>()(
         connectedSystems: state.connectedSystems,
       }),
       migrate: ((persisted: unknown, version: number) => {
-        // Drop any state from < v5 — v2.5 introduced new VersionSnapshot
-        // shape, demo user, and threshold persistence.
-        if (version < 5) return undefined;
+        // Drop any state from < v6 — v2.6 added Input-First fields
+        // (lifecycleStage, lrpMethodology, epidemiologyInputs/marketShareInputs,
+        // overlays, draftStatus) on ConnectedForecast.
+        if (version < 6) return undefined;
         return persisted;
       }) as never,
       merge: (persisted, current) => {

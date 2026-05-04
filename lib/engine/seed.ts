@@ -602,21 +602,58 @@ export function getOcrevusPostLoeSeed(): ConnectedForecast {
   };
 }
 
+/**
+ * v2.6: post-process a v2.5 seed to add the new Input-First fields.
+ * The legacy lifecycleContext is preserved (engine internals still use it),
+ * but the v2.6 UI reads from `lifecycleStage`, `lrpMethodology`, and the
+ * new methodology input bundles.
+ */
+function withV26Fields(forecast: ConnectedForecast): ConnectedForecast {
+  // Lazy import to avoid circular module load
+  /* eslint-disable @typescript-eslint/no-var-requires */
+  const { v26InputsForBrand } =
+    require("./seedV26") as typeof import("./seedV26");
+  const { BRAND_CONFIGS } =
+    require("./brands") as typeof import("./brands");
+  /* eslint-enable @typescript-eslint/no-var-requires */
+  const cfg = BRAND_CONFIGS[forecast.brand];
+  const inputs = v26InputsForBrand(forecast.brand);
+  return {
+    ...forecast,
+    lifecycleStage: cfg.defaultStage,
+    lrpMethodology: cfg.defaultMethodologyV26,
+    epidemiologyInputs: inputs.epidemiologyInputs,
+    marketShareInputs: inputs.marketShareInputs,
+    preLaunchOverlay: inputs.preLaunchOverlay,
+    loeOverlay: inputs.loeOverlay,
+    draftStatus: "submitted",
+    lastSubmittedAt: new Date().toISOString(),
+    cycleName: "2026 Q2 S&OP",
+    cycleHorizonYears: 10,
+  };
+}
+
 export function getSeedForecastByKey(key: ForecastSeedKey): ConnectedForecast {
+  let f: ConnectedForecast;
   switch (key) {
     case "fenebrutinib-prelaunch":
-      return getFenebrutinibPreLaunchSeed();
+      f = getFenebrutinibPreLaunchSeed();
+      break;
     case "zunovo-exclusivity":
-      return getZunovoExclusivitySeed();
+      f = getZunovoExclusivitySeed();
+      break;
     case "ocrevus-postloe":
-      return getOcrevusPostLoeSeed();
+      f = getOcrevusPostLoeSeed();
+      break;
     case "ocrevus-exclusivity":
     default:
-      return getOcrevusExclusivitySeed();
+      f = getOcrevusExclusivitySeed();
+      break;
   }
+  return withV26Fields(f);
 }
 
 // Backwards-compatible default seed used by existing callers (StoreInit / resetToSeed).
 export function getSeedForecast(): ConnectedForecast {
-  return getOcrevusExclusivitySeed();
+  return withV26Fields(getOcrevusExclusivitySeed());
 }
