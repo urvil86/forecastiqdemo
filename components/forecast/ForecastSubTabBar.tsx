@@ -54,12 +54,7 @@ export function ForecastSubTabBar() {
       );
     }
     if (id === "views") {
-      if (draft === "submitted")
-        return (
-          <span className="pill text-[9px] bg-emerald-500/10 text-emerald-700 border border-emerald-500/30">
-            Available
-          </span>
-        );
+      if (draft === "submitted") return null;
       return (
         <span className="pill text-[9px] bg-gray-500/10 text-gray-600 border border-gray-500/30">
           Submit forecast to view

@@ -200,6 +200,9 @@ interface AppStore {
     options: { mode: "active" | "scenario"; reason?: string },
   ) => void;
 
+  // v2.6 demo: seed two prior versions so drift panel has something to show
+  seedDemoVersionsIfEmpty: () => void;
+
   // v2.6 Input-First actions
   setLifecycleStage: (stage: LifecycleStage) => void;
   setLrpMethodologyV26: (methodology: LrpMethodologyV26) => void;
@@ -1023,6 +1026,74 @@ export const useStore = create<AppStore>()(
             },
           };
         });
+      },
+
+      // ─── v2.6 demo seed: prior version for drift comparison ───────
+      seedDemoVersionsIfEmpty: () => {
+        const state = get();
+        if (state.versionHistory.length > 0) return;
+        const cur = state.forecast;
+        // Build a "Q1 2026 cycle baseline" with subtly lower share assumptions
+        // so the active forecast shows positive drift on submit.
+        const baseline: ConnectedForecast = JSON.parse(JSON.stringify(cur));
+        if (baseline.epidemiologyInputs) {
+          baseline.epidemiologyInputs.yearly = baseline.epidemiologyInputs.yearly.map(
+            (y, i) => ({
+              ...y,
+              classSharePct: Math.max(0, y.classSharePct - 1.5),
+              brandSharePct: Math.max(0, y.brandSharePct - 2),
+              persistenceY1Pct: Math.max(50, y.persistenceY1Pct - (i < 2 ? 0 : 1)),
+            }),
+          );
+          // Slightly lower gross price in the baseline
+          baseline.epidemiologyInputs.pricing.yearly = baseline.epidemiologyInputs.pricing.yearly.map(
+            (p) => ({ ...p, grossPriceUsd: p.grossPriceUsd - 800 }),
+          );
+        }
+        if (baseline.marketShareInputs) {
+          baseline.marketShareInputs.yearly = baseline.marketShareInputs.yearly.map(
+            (y) => ({
+              ...y,
+              brandSharePct: Math.max(0, y.brandSharePct - 1.8),
+            }),
+          );
+        }
+        // Toggle one event off in baseline so the diff also shows event delta
+        if (baseline.lrp.events.length > 0) {
+          baseline.lrp.events = baseline.lrp.events.map((e, i) =>
+            i === 0
+              ? { ...e, peakImpact: Math.max(0, e.peakImpact - 0.03) }
+              : e,
+          );
+        }
+        baseline.version = 1;
+        baseline.versionLabel = "Q1 2026 cycle baseline";
+
+        const computed = computeWithLifecycle(baseline);
+        const variance = computeVariance(computed);
+        const snap = saveSnapshot(baseline, computed, {
+          user: DEMO_USERS[1] ?? state.currentDemoUser,
+          triggerType: "manual-save",
+          triggerReason: "planned-checkpoint",
+          threshold: state.threshold,
+          variance,
+          label: "Q1 2026 cycle baseline",
+          reason: "Q1 cycle close — pre-S&OP review",
+          version: 1,
+        });
+        // Backdate the baseline timestamp so it reads as "prior cycle"
+        const backdated = new Date(Date.now() - 8 * 7 * 86400_000).toISOString();
+        snap.createdAt = backdated;
+        snap.timestamp = backdated;
+        // Bump current forecast to v2 so the timeline reads naturally
+        set((s) => ({
+          forecast: {
+            ...s.forecast,
+            version: 2,
+            versionLabel: "Q2 2026 cycle (current)",
+          },
+          versionHistory: [snap, ...s.versionHistory],
+        }));
       },
 
       // ─── v2.6 Input-First actions ─────────────────────────────────

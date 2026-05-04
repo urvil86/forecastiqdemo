@@ -132,18 +132,10 @@ export function ForecastWorkspaceShell({ children }: { children: ReactNode }) {
               </option>
             ))}
           </select>
-          {/* Geography filter */}
-          <select
-            value={forecast.geography}
-            onChange={() => { /* placeholder — single geography in demo */ }}
-            className="input-cell !font-sans text-sm"
-            title="Geography"
-          >
-            <option value="US">US</option>
-            <option value="EU5">EU5</option>
-            <option value="Japan">Japan</option>
-            <option value="RoW">RoW</option>
-          </select>
+          {/* Geography — US only in this demo */}
+          <span className="px-2 py-1 bg-background border border-border rounded text-xs text-muted">
+            United States
+          </span>
           {/* Variance status pill (replaces lifecycle badge) */}
           <span
             className={`pill border uppercase tracking-wider text-[10px] ${statusClass(variance.status)}`}

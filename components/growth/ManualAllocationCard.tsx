@@ -21,6 +21,7 @@ export const DEFAULT_MANUAL_FORM: ManualFormState = {
     "patient-services-capacity": 0,
     "dtc-spend": 0,
     "account-targeting": 0,
+    "site-of-care-optimization": 0,
   },
 };
 

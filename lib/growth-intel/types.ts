@@ -6,7 +6,8 @@ export type LeverId =
   | "sample-allocation"
   | "patient-services-capacity"
   | "dtc-spend"
-  | "account-targeting";
+  | "account-targeting"
+  | "site-of-care-optimization";
 
 export type LeverCategory =
   | "commercial-investment"
