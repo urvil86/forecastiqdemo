@@ -212,6 +212,10 @@ export function getOcrevusExclusivitySeed(): ConnectedForecast {
           category: "commercial",
           active: true,
           defaultMixPct: 0.78,
+          // Initial-dose presentation; ~half the price of the 600mg
+          // maintenance dose. Multipliers are normalized so the baseline
+          // mix (78/20/2) gives a weighted-avg of 1.0.
+          relativePriceMultiplier: 0.85,
         },
         {
           id: "ocrevus-600mg",
@@ -219,6 +223,8 @@ export function getOcrevusExclusivitySeed(): ConnectedForecast {
           category: "commercial",
           active: true,
           defaultMixPct: 0.2,
+          // Maintenance dose; ~2× the 300mg per-unit price.
+          relativePriceMultiplier: 1.70,
         },
         {
           id: "ocrevus-sample",
@@ -226,6 +232,8 @@ export function getOcrevusExclusivitySeed(): ConnectedForecast {
           category: "sample",
           active: true,
           defaultMixPct: 0.02,
+          // Samples don't contribute to net revenue.
+          relativePriceMultiplier: 0,
         },
       ],
       inventoryStart: [

@@ -36,6 +36,21 @@ export interface SkuDefinition {
   category: "commercial" | "sample" | "pap";
   active: boolean;
   defaultMixPct: number;
+  /**
+   * Relative net-price weight for this SKU vs the brand's average dose price.
+   * Compute uses it to scale per-SKU revenue so that mix shifts change the
+   * brand's effective price (and therefore total net sales). Multipliers
+   * should be normalized so that the seeded baseline mix produces a
+   * weighted-avg of 1.0; that way unchanged mix means unchanged forecast.
+   *
+   * Examples (Ocrevus):
+   *   300mg presentation → 0.85
+   *   600mg presentation → 1.70 (≈ 2× dose, ≈ 2× price)
+   *   Sample             → 0    (no revenue contribution)
+   *
+   * If undefined, treated as 1.0 (legacy behavior — pure proportional split).
+   */
+  relativePriceMultiplier?: number;
 }
 
 export interface WeeklyInput {

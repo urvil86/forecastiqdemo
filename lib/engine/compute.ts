@@ -253,9 +253,14 @@ export function compute(forecast: ConnectedForecast): ComputedForecastConnected 
         ? (weekMixByid.get(sku.id) ?? sku.defaultMixPct)
         : sku.defaultMixPct;
       const baseSkuShare = skuMixValue / weekTotalMix;
+      const priceMult = sku.relativePriceMultiplier ?? 1.0;
       const baseSkuVol = w.totalVolume * baseSkuShare;
-      // Find equivalent net/gross for this SKU
-      const baseSkuNet = w.totalNetSales * baseSkuShare;
+      // Per-SKU net scales by the SKU's relative price. If multipliers
+      // are normalized so the baseline mix gives a weighted-avg of 1.0,
+      // unchanged mix means unchanged total; mix shifts (e.g., 600mg up,
+      // samples down) change the brand's effective price and therefore
+      // the week's total net sales.
+      const baseSkuNet = w.totalNetSales * baseSkuShare * priceMult;
       // Approximate SKU gross from week's average gross/volume ratio
       const baseSkuGross = baseSkuNet > 0 ? baseSkuNet / Math.max(0.0001, 1 - 0.5825) : 0; // placeholder; recomputed below
       const wi = weeklyInputMap.get(`${w.weekStart}|${sku.id}`);
