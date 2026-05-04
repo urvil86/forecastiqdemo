@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { getBrandConfig } from "@/lib/engine";
 import type { BrandKey } from "@/lib/engine";
@@ -24,6 +25,8 @@ export default function ForecastViewsPage() {
   const forecast = useStore((s) => s.forecast);
   const setDraftStatus = useStore((s) => s.setDraftStatus);
   const versions = useStore((s) => s.versionHistory);
+  const leftPanelHidden = useStore((s) => s.leftPanelHidden);
+  const setLeftPanelHidden = useStore((s) => s.setLeftPanelHidden);
   const router = useRouter();
   const [active, setActive] = useState<AnchorId>("lrp");
 
@@ -125,6 +128,15 @@ export default function ForecastViewsPage() {
       {/* Action strip */}
       <div className="border-b border-border px-8 py-3 flex items-center justify-between flex-wrap gap-2 bg-surface">
         <div className="flex items-baseline gap-3 flex-wrap">
+          {leftPanelHidden && (
+            <button
+              onClick={() => setLeftPanelHidden(false)}
+              className="text-muted hover:text-secondary self-center"
+              title="Show left panel"
+            >
+              <PanelLeftOpen size={16} />
+            </button>
+          )}
           <span className="text-xs text-muted">Forecast version:</span>
           <span className="pill text-[10px] bg-emerald-500/10 text-emerald-700 border border-emerald-500/30">
             {fmtVersion()}
@@ -163,35 +175,51 @@ export default function ForecastViewsPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr]">
+      <div
+        className={
+          "grid grid-cols-1 " +
+          (leftPanelHidden ? "" : "lg:grid-cols-[220px_1fr]")
+        }
+      >
         {/* Anchor nav */}
-        <aside className="hidden lg:block sticky top-44 self-start h-[calc(100vh-12rem)] p-4 border-r border-border bg-surface overflow-y-auto">
-          <div className="caption text-muted mb-3 uppercase tracking-wider text-[10px]">
-            Outputs
-          </div>
-          <ul className="space-y-1 text-sm">
-            {anchors.map((a, i) => {
-              const isActive = a.id === active;
-              return (
-                <li key={a.id}>
-                  <button
-                    onClick={() => scrollTo(a.id)}
-                    className={
-                      "w-full text-left px-3 py-2 rounded transition-colors " +
-                      (isActive
-                        ? "bg-primary-light/40 text-secondary"
-                        : "hover:bg-primary-light/20 text-foreground")
-                    }
-                  >
-                    <span className="font-semibold text-sm">
-                      {i + 1}. {a.label}
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </aside>
+        {!leftPanelHidden && (
+          <aside className="hidden lg:block sticky top-44 self-start h-[calc(100vh-12rem)] p-4 border-r border-border bg-surface overflow-y-auto">
+            <div className="flex items-center justify-between mb-3">
+              <div className="caption text-muted uppercase tracking-wider text-[10px]">
+                Outputs
+              </div>
+              <button
+                onClick={() => setLeftPanelHidden(true)}
+                className="text-muted hover:text-secondary"
+                title="Hide left panel"
+              >
+                <PanelLeftClose size={14} />
+              </button>
+            </div>
+            <ul className="space-y-1 text-sm">
+              {anchors.map((a, i) => {
+                const isActive = a.id === active;
+                return (
+                  <li key={a.id}>
+                    <button
+                      onClick={() => scrollTo(a.id)}
+                      className={
+                        "w-full text-left px-3 py-2 rounded transition-colors " +
+                        (isActive
+                          ? "bg-primary-light/40 text-secondary"
+                          : "hover:bg-primary-light/20 text-foreground")
+                      }
+                    >
+                      <span className="font-semibold text-sm">
+                        {i + 1}. {a.label}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </aside>
+        )}
 
         {/* Content */}
         <div className="min-w-0">

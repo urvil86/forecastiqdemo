@@ -2,7 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, AlertTriangle, AlertCircle, Loader2 } from "lucide-react";
+import {
+  Check,
+  AlertTriangle,
+  AlertCircle,
+  Loader2,
+  PanelLeftClose,
+  PanelLeftOpen,
+} from "lucide-react";
 import { useStore } from "@/lib/store";
 import { getBrandConfig } from "@/lib/engine";
 import type { BrandKey } from "@/lib/engine";
@@ -24,6 +31,8 @@ export function InputPage() {
   const submitForecast = useStore((s) => s.submitForecast);
   const saveVersion = useStore((s) => s.saveVersion);
   const currentDemoUser = useStore((s) => s.currentDemoUser);
+  const leftPanelHidden = useStore((s) => s.leftPanelHidden);
+  const setLeftPanelHidden = useStore((s) => s.setLeftPanelHidden);
   const router = useRouter();
   const [active, setActive] = useState<AnchorId>("setup");
   const [submitting, setSubmitting] = useState(false);
@@ -126,49 +135,78 @@ export function InputPage() {
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr]">
+    <div
+      className={
+        "grid grid-cols-1 " +
+        (leftPanelHidden ? "" : "lg:grid-cols-[220px_1fr]")
+      }
+    >
       {/* Anchor nav */}
-      <aside className="hidden lg:block sticky top-44 self-start h-[calc(100vh-12rem)] p-4 border-r border-border bg-surface overflow-y-auto">
-        <div className="caption text-muted mb-3 uppercase tracking-wider text-[10px]">
-          Sections
-        </div>
-        <ul className="space-y-1 text-sm">
-          {anchors.map((a, i) => (
-            <li key={a.id}>
-              <button
-                onClick={() => scrollTo(a.id)}
-                className={
-                  "w-full text-left px-3 py-2 rounded transition-colors " +
-                  (active === a.id
-                    ? "bg-primary-light/40 text-secondary"
-                    : "hover:bg-primary-light/20 text-foreground")
-                }
-              >
-                <span className="font-semibold text-sm">
-                  {i + 1}. {a.label}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </aside>
+      {!leftPanelHidden && (
+        <aside className="hidden lg:block sticky top-44 self-start h-[calc(100vh-12rem)] p-4 border-r border-border bg-surface overflow-y-auto">
+          <div className="flex items-center justify-between mb-3">
+            <div className="caption text-muted uppercase tracking-wider text-[10px]">
+              Sections
+            </div>
+            <button
+              onClick={() => setLeftPanelHidden(true)}
+              className="text-muted hover:text-secondary"
+              title="Hide left panel"
+            >
+              <PanelLeftClose size={14} />
+            </button>
+          </div>
+          <ul className="space-y-1 text-sm">
+            {anchors.map((a, i) => (
+              <li key={a.id}>
+                <button
+                  onClick={() => scrollTo(a.id)}
+                  className={
+                    "w-full text-left px-3 py-2 rounded transition-colors " +
+                    (active === a.id
+                      ? "bg-primary-light/40 text-secondary"
+                      : "hover:bg-primary-light/20 text-foreground")
+                  }
+                >
+                  <span className="font-semibold text-sm">
+                    {i + 1}. {a.label}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </aside>
+      )}
 
       {/* Content */}
       <div className="min-w-0">
         {/* Top strip */}
         <div className="border-b border-border px-8 py-3 flex items-center justify-between flex-wrap gap-2 bg-surface">
-          <div>
-            <div className="font-heading text-h3 text-secondary">
-              Forecast Input · {forecast.brand} ·{" "}
-              {stage === "pre-launch"
-                ? "Pre-launch"
-                : stage === "loe"
-                ? "LoE"
-                : "Growth"}
-            </div>
-            <div className="text-xs text-muted">
-              {forecast.cycleName ?? "Current cycle"} ·{" "}
-              {methodology === "epidemiology" ? "Epidemiology-based" : "Market share-based"}
+          <div className="flex items-center gap-3">
+            {leftPanelHidden && (
+              <button
+                onClick={() => setLeftPanelHidden(false)}
+                className="text-muted hover:text-secondary"
+                title="Show left panel"
+              >
+                <PanelLeftOpen size={16} />
+              </button>
+            )}
+            <div>
+              <div className="font-heading text-h3 text-secondary">
+                Forecast Input · {forecast.brand} ·{" "}
+                {stage === "pre-launch"
+                  ? "Pre-launch"
+                  : stage === "loe"
+                  ? "LoE"
+                  : "Growth"}
+              </div>
+              <div className="text-xs text-muted">
+                {forecast.cycleName ?? "Current cycle"} ·{" "}
+                {methodology === "epidemiology"
+                  ? "Epidemiology-based"
+                  : "Market share-based"}
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-2">

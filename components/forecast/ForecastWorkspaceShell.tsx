@@ -37,9 +37,6 @@ export function ForecastWorkspaceShell({ children }: { children: ReactNode }) {
   const currentDemoUser = useStore((s) => s.currentDemoUser);
   const setDemoUser = useStore((s) => s.setDemoUser);
   const saveVersion = useStore((s) => s.saveVersion);
-  const varianceStatus = useStore((s) => s.varianceStatus);
-  const computed = useStore((s) => s.computed);
-  const threshold = useStore((s) => s.threshold);
   const connectedSystems = useStore((s) => s.connectedSystems);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [connectDialogOpen, setConnectDialogOpen] = useState(false);
@@ -60,23 +57,6 @@ export function ForecastWorkspaceShell({ children }: { children: ReactNode }) {
     );
     return found?.id ?? "forecast";
   }, [pathname]);
-
-  // Derive variance status (recomputed when computed/threshold changes)
-  const variance = useMemo(() => {
-    return varianceStatus();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [computed, threshold]);
-
-  function statusLabel(s: typeof variance.status): string {
-    if (s === "aligned") return "Aligned";
-    if (s === "watching") return "Watching";
-    return "Drift";
-  }
-  function statusClass(s: typeof variance.status): string {
-    if (s === "aligned") return "bg-emerald-500/10 text-emerald-700 border-emerald-500/30";
-    if (s === "watching") return "bg-amber-500/10 text-amber-700 border-amber-500/30";
-    return "bg-red-500/10 text-red-700 border-red-500/30";
-  }
 
   function switchBrand(brand: BrandKey) {
     if (brand === forecast.brand) return;
@@ -132,20 +112,6 @@ export function ForecastWorkspaceShell({ children }: { children: ReactNode }) {
               </option>
             ))}
           </select>
-          {/* Geography — US only in this demo */}
-          <span className="px-2 py-1 bg-background border border-border rounded text-xs text-muted">
-            United States
-          </span>
-          {/* Variance status pill (replaces lifecycle badge) */}
-          <span
-            className={`pill border uppercase tracking-wider text-[10px] ${statusClass(variance.status)}`}
-            title={`Variance: 4w ${(variance.rolling4Week * 100).toFixed(1)}% · 13w ${(variance.rolling13Week * 100).toFixed(1)}%`}
-          >
-            {statusLabel(variance.status)}
-          </span>
-          <span className="text-xs text-muted hidden md:inline">
-            {brandConfig.defaultMethodology}
-          </span>
         </div>
 
         {/* Demo user dropdown — right of geography */}

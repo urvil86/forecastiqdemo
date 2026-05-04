@@ -203,6 +203,10 @@ interface AppStore {
   // v2.6 demo: seed two prior versions so drift panel has something to show
   seedDemoVersionsIfEmpty: () => void;
 
+  // v2.6 UI: persistent left-panel hide state for Input + Views
+  leftPanelHidden: boolean;
+  setLeftPanelHidden: (hidden: boolean) => void;
+
   // v2.6 Input-First actions
   setLifecycleStage: (stage: LifecycleStage) => void;
   setLrpMethodologyV26: (methodology: LrpMethodologyV26) => void;
@@ -1028,6 +1032,10 @@ export const useStore = create<AppStore>()(
         });
       },
 
+      // ─── v2.6 left-panel toggle ────────────────────────────────────
+      leftPanelHidden: false,
+      setLeftPanelHidden: (hidden) => set({ leftPanelHidden: hidden }),
+
       // ─── v2.6 demo seed: prior version for drift comparison ───────
       seedDemoVersionsIfEmpty: () => {
         const state = get();
@@ -1316,6 +1324,7 @@ export const useStore = create<AppStore>()(
         currentDemoUser: state.currentDemoUser,
         threshold: state.threshold,
         connectedSystems: state.connectedSystems,
+        leftPanelHidden: state.leftPanelHidden,
       }),
       migrate: ((persisted: unknown, version: number) => {
         // Drop any state from < v6 — v2.6 added Input-First fields
