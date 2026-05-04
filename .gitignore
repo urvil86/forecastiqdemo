@@ -50,3 +50,6 @@ next-env.d.ts
 # Misc
 .cache/
 .turbo/
+
+# Claude agent runtime
+.claude/

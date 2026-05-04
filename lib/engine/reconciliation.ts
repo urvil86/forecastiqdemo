@@ -2,13 +2,21 @@ import type {
   ConnectedForecast,
   ComputedForecastConnected,
   ReconciliationEvent,
+  ThresholdConfig,
 } from "./types";
 import { compute } from "./compute";
 
 export function reconcile(
   forecast: ConnectedForecast,
-  computed?: ComputedForecastConnected
+  computed?: ComputedForecastConnected,
+  threshold?: ThresholdConfig,
 ): ReconciliationEvent[] {
+  const t = threshold ?? {
+    rollingWindow: "4-week" as const,
+    thresholdPct: 5,
+    appliesTo: "rolling-variance" as const,
+  };
+  const tFrac = t.thresholdPct / 100;
   const c = computed ?? compute(forecast);
   // Compute "trend implied" weekly values by re-running compute with all weekly overrides cleared
   const cleared: ConnectedForecast = {
@@ -56,26 +64,21 @@ export function reconcile(
   let message: string;
   let proposedAction: string;
 
-  if (abs <= 0.03) {
+  if (abs <= tFrac) {
     type = "aligned";
     severity = "info";
-    message = `Rolling 4-week variance at ${(r4 * 100).toFixed(1)}% — within threshold. No action needed.`;
+    message = `Rolling 4-week variance at ${(r4 * 100).toFixed(1)}% — within threshold (±${t.thresholdPct}%).`;
     proposedAction = "None";
-  } else if (abs <= 0.05) {
-    type = "minor-drift";
-    severity = "info";
-    message = `Rolling 4-week variance at ${(r4 * 100).toFixed(1)}% — minor drift, monitoring.`;
-    proposedAction = "Monitor for two more weeks";
-  } else if (abs <= 0.1) {
+  } else if (abs <= 1.5 * tFrac) {
     type = r4 > 0 ? "sustained-positive-variance" : "sustained-negative-variance";
     severity = "warning";
-    message = `Rolling 4-week variance at ${(r4 * 100).toFixed(1)}% for ${actualWeeks.slice(-4).length} consecutive weeks. Recommend LRP refresh.`;
-    proposedAction = "Refresh LRP";
+    message = `Rolling 4-week variance at ${(r4 * 100).toFixed(1)}% — beyond ±${t.thresholdPct}% threshold. Reconciliation recommended.`;
+    proposedAction = "Reconcile";
   } else {
     type = "critical-drift";
     severity = "critical";
-    message = `Rolling 4-week variance at ${(r4 * 100).toFixed(1)}% — critical drift. Immediate LRP refresh required.`;
-    proposedAction = "Immediate LRP refresh";
+    message = `Rolling 4-week variance at ${(r4 * 100).toFixed(1)}% — critical drift (>${(1.5 * t.thresholdPct).toFixed(1)}%). Immediate reconciliation required.`;
+    proposedAction = "Immediate reconciliation";
   }
 
   return [

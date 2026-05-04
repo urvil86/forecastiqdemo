@@ -1,7 +1,7 @@
 "use client";
 
-import { LaunchReadinessTab } from "@/components/lrp/LaunchReadinessTab";
+import { LegacyRedirectBanner } from "@/components/forecast/LegacyRedirectBanner";
 
 export default function ForecastLaunchReadinessPage() {
-  return <LaunchReadinessTab />;
+  return <LegacyRedirectBanner target="/forecast/#lrp" label="Launch Readiness" />;
 }

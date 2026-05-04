@@ -1,7 +1,7 @@
 "use client";
 
-import { LrpReviewTab } from "@/components/lrp/review/LrpReviewTab";
+import { LegacyRedirectBanner } from "@/components/forecast/LegacyRedirectBanner";
 
 export default function ForecastReviewLrpPage() {
-  return <LrpReviewTab embeddedInWorkspace />;
+  return <LegacyRedirectBanner target="/forecast/#lrp" label="LRP Review" />;
 }

@@ -1,7 +1,7 @@
 "use client";
 
-import { LrpAuthoringTab } from "@/components/lrp/LrpAuthoringTab";
+import { LegacyRedirectBanner } from "@/components/forecast/LegacyRedirectBanner";
 
 export default function ForecastLrpPage() {
-  return <LrpAuthoringTab embeddedInWorkspace />;
+  return <LegacyRedirectBanner target="/forecast/#lrp" label="LRP" />;
 }

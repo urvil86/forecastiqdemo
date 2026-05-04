@@ -1,7 +1,7 @@
 "use client";
 
-import { ConnectTab } from "@/components/connect/ConnectTab";
+import { LegacyRedirectBanner } from "@/components/forecast/LegacyRedirectBanner";
 
 export default function ForecastConnectPage() {
-  return <ConnectTab />;
+  return <LegacyRedirectBanner target="/forecast/#reconcile" label="Connect" />;
 }
