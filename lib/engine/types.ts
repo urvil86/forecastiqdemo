@@ -287,6 +287,107 @@ export interface CalcModule {
   defaultValue?: number;
 }
 
+// ─── v2.6 Lifecycle stage and LRP methodology types ──────────────
+
+export type LifecycleStage = "pre-launch" | "growth" | "loe";
+
+/** v2.6: TrendFit dropped from LRP. Two top-down methodologies remain. */
+export type LrpMethodologyV26 = "epidemiology" | "market-share";
+
+export interface PricingInputs {
+  yearly: {
+    year: number;
+    grossPriceUsd: number;
+    tradeDiscountPct: number;
+    /** GTN reserve as % */
+    reserveRatePct: number;
+  }[];
+}
+
+export interface EpidemiologyInputs {
+  /** Patient funnel year by year — 10-year horizon */
+  yearly: {
+    year: number;
+    /** Total addressable patient population (US, in 000s) */
+    prevalence: number;
+    /** % of prevalence diagnosed */
+    diagnosisRatePct: number;
+    /** % of diagnosed treated */
+    treatedRatePct: number;
+    /** % of treated on this drug class */
+    classSharePct: number;
+    /** % within class on this brand */
+    brandSharePct: number;
+    /** Year 1 persistence */
+    persistenceY1Pct: number;
+    /** Year 2 persistence */
+    persistenceY2Pct: number;
+    /** Average doses per persistent patient */
+    dosesPerPatientYear: number;
+  }[];
+  pricing: PricingInputs;
+}
+
+export interface MarketShareInputs {
+  yearly: {
+    year: number;
+    /** Total addressable market in $M */
+    totalMarketUsdM: number;
+    /** Optional alternative input: total addressable units in 000s */
+    totalMarketUnitsK?: number;
+    /** Brand market share % */
+    brandSharePct: number;
+  }[];
+  pricing: PricingInputs;
+}
+
+export interface PreLaunchOverlay {
+  analogs: {
+    brand: string;
+    /** 0-100, analogs sum to 100 */
+    weightPct: number;
+    clinicalAdjPct: number;
+    competitiveAdjPct: number;
+    marketAccessAdjPct: number;
+  }[];
+  posModel: {
+    currentStage: "phase2" | "phase3" | "filed" | "approved";
+    phase3ReadoutProb: number;
+    fdaFilingProb: number;
+    fdaApprovalProb: number;
+    /** 0-1, computed = product of applicable stage probs */
+    cumulativePoS: number;
+  };
+  launchTrajectory: {
+    expectedLaunchDate: string;
+    timeToPeakYears: number;
+    peakSharePct: number;
+    rampShape: "slow" | "moderate" | "fast";
+  };
+}
+
+export interface LoeOverlay {
+  biosimilarEntry: {
+    expectedEntryDate: string;
+    entrantCount: number;
+    classPriceErosionByYear: {
+      yearsAfterEntry: number;
+      remainingClassPricePct: number;
+    }[];
+    originatorShareRetentionByYear: {
+      yearsAfterEntry: number;
+      remainingOriginatorSharePct: number;
+    }[];
+  };
+  defenseStrategy: {
+    pricingPosture: "hold" | "match" | "discount";
+    contractingInvestmentUsdM: { year: number; amount: number }[];
+    patientRetentionInvestmentUsdM: { year: number; amount: number }[];
+  };
+}
+
+export type DraftStatus = "draft" | "submitted";
+
 export interface ConnectedForecast {
   id: string;
   brand: "Ocrevus" | "Zunovo" | "Fenebrutinib";
@@ -310,6 +411,28 @@ export interface ConnectedForecast {
   lifecycleContext: LifecycleContext;
   version: number;
   versionLabel: string;
+
+  // ── v2.6 Input-First additions ──
+  /** Forecasting stage chosen by the user per cycle. Drives Input visibility. */
+  lifecycleStage?: LifecycleStage;
+  /** Top-down LRP methodology. v2.6 drops TrendFit; two options remain. */
+  lrpMethodology?: LrpMethodologyV26;
+  /** Populated when lrpMethodology === 'epidemiology'. */
+  epidemiologyInputs?: EpidemiologyInputs;
+  /** Populated when lrpMethodology === 'market-share'. */
+  marketShareInputs?: MarketShareInputs;
+  /** Populated only when lifecycleStage === 'pre-launch'. */
+  preLaunchOverlay?: PreLaunchOverlay;
+  /** Populated only when lifecycleStage === 'loe'. */
+  loeOverlay?: LoeOverlay;
+  /** Draft / submitted state — gates Views surface. */
+  draftStatus?: DraftStatus;
+  lastSubmittedAt?: string;
+  lastSubmittedBy?: DemoUser;
+  /** Forecast cycle name (e.g., "2026 Q2 S&OP") */
+  cycleName?: string;
+  /** Cycle horizon in years */
+  cycleHorizonYears?: number;
 }
 
 export interface AnnualDataPoint {
@@ -475,19 +598,23 @@ export type LrpMethodology =
 
 export interface BrandConfig {
   brand: BrandKey;
+  /** v2.5 legacy: kept for backwards compatibility with existing callers. */
   defaultMethodology: LrpMethodology;
   /** Whether STF section is active or shows "no actuals yet" */
   stfActive: boolean;
-  /** For brands with hybrid methodology (Zunovo case) */
+  /** v2.6: default stage when this brand is loaded fresh */
+  defaultStage: LifecycleStage;
+  /** v2.6: default LRP methodology (epidemiology / market-share) */
+  defaultMethodologyV26: LrpMethodologyV26;
+  /** v2.5 legacy: hybrid blender config (no longer surfaced in v2.6 UI) */
   hybridConfig?: {
     primaryMethodology: "TrendFit" | "AnalogWeighted";
     secondaryMethodology: "TrendFit" | "AnalogWeighted";
     blendWeights: { primary: number; secondary: number };
   };
-  /** For brands using AnalogWeighted (Fenebrutinib pre-launch case) */
+  /** v2.5 legacy: analog config (now superseded by PreLaunchOverlay in v2.6) */
   analogConfig?: {
     analogs: { brand: string; weight: number }[];
-    /** cumulative PoS, applied to the resulting curve */
     posMultiplier?: number;
   };
 }

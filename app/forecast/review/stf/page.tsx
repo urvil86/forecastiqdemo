@@ -3,5 +3,5 @@
 import { LegacyRedirectBanner } from "@/components/forecast/LegacyRedirectBanner";
 
 export default function ForecastReviewStfPage() {
-  return <LegacyRedirectBanner target="/forecast/#stf" label="STF Review" />;
+  return <LegacyRedirectBanner target="/forecast/views/" label="STF Review" />;
 }

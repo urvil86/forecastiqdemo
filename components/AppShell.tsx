@@ -41,13 +41,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       if (!meta) return;
       if (e.key === "1") {
         e.preventDefault();
-        router.push("/forecast/#lrp");
+        router.push("/forecast/");
       } else if (e.key === "2") {
         e.preventDefault();
-        router.push("/forecast/#stf");
+        router.push("/forecast/views/");
       } else if (e.key === "3") {
         e.preventDefault();
-        router.push("/forecast/#reconcile");
+        router.push("/forecast/reconcile/");
       } else if (e.key === "4") {
         e.preventDefault();
         router.push("/forecast/plan/");
@@ -125,10 +125,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <NavItem href="/forecast/plan/" active={pathname?.startsWith("/forecast/plan") ?? false} label="Plan ★" highlight />
 
             <div className="mt-8" />
-            <SectionHeader>Workflow Anchors</SectionHeader>
-            <NavItem href="/forecast/#lrp" active={false} label="↳ Long Range Plan" />
-            <NavItem href="/forecast/#stf" active={false} label="↳ Short Term Forecast" />
-            <NavItem href="/forecast/#reconcile" active={false} label="↳ Reconcile & Save" />
+            <SectionHeader>Forecast Workflow</SectionHeader>
+            <NavItem href="/forecast/" active={pathname === "/forecast" || pathname === "/forecast/" || pathname?.startsWith("/forecast/input") ? true : false} label="↳ Input" />
+            <NavItem href="/forecast/views/" active={pathname?.startsWith("/forecast/views") ?? false} label="↳ Views" />
+            <NavItem href="/forecast/reconcile/" active={pathname?.startsWith("/forecast/reconcile") ?? false} label="↳ Reconcile" />
 
             <div className="mt-8" />
             <SectionHeader>Tools</SectionHeader>
@@ -174,9 +174,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           >
             <h3 className="font-heading text-h3 mb-4">Keyboard Shortcuts</h3>
             <ul className="space-y-2 text-sm">
-              <Shortcut keys="⌘ / Ctrl + 1" label="Long-Range Plan" />
-              <Shortcut keys="⌘ / Ctrl + 2" label="Short-Term Forecast" />
-              <Shortcut keys="⌘ / Ctrl + 3" label="Connect Zone" />
+              <Shortcut keys="⌘ / Ctrl + 1" label="Forecast · Input" />
+              <Shortcut keys="⌘ / Ctrl + 2" label="Forecast · Views" />
+              <Shortcut keys="⌘ / Ctrl + 3" label="Forecast · Reconcile" />
+              <Shortcut keys="⌘ / Ctrl + 4" label="Plan" />
               <Shortcut keys="⌘ / Ctrl + R" label="Reset Demo" />
             </ul>
             <div className="mt-4 text-right">

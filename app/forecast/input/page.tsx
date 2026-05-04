@@ -2,6 +2,6 @@
 
 import { InputPage } from "@/components/forecast/input/InputPage";
 
-export default function ForecastIndex() {
+export default function ForecastInputPage() {
   return <InputPage />;
 }
