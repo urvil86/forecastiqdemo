@@ -12,12 +12,15 @@ import {
   statusForVariance,
   v26InputsForBrand,
   seedOcrevusLoeOverlay,
+  detectScopeChanges,
+  scopeFromChanges,
   DEMO_USERS,
   DEFAULT_DEMO_USER,
   DEFAULT_THRESHOLD,
   type ConnectedForecast,
   type ComputedForecastConnected,
   type DemoUser,
+  type ForecastScope,
   type ForecastSeedKey,
   type LifecycleMode,
   type LifecycleStage,
@@ -203,6 +206,10 @@ interface AppStore {
   // v2.6 demo: seed two prior versions so drift panel has something to show
   seedDemoVersionsIfEmpty: () => void;
 
+  // v2.6 UI: persistent left-panel hide state for Input + Views
+  leftPanelHidden: boolean;
+  setLeftPanelHidden: (hidden: boolean) => void;
+
   // v2.6 Input-First actions
   setLifecycleStage: (stage: LifecycleStage) => void;
   setLrpMethodologyV26: (methodology: LrpMethodologyV26) => void;
@@ -228,7 +235,15 @@ interface AppStore {
     patch: Partial<NonNullable<ConnectedForecast["loeOverlay"]>>,
   ) => void;
   setDraftStatus: (status: "draft" | "submitted") => void;
-  submitForecast: () => void;
+  /**
+   * Submit the forecast. Detects scope of changes vs the most recent
+   * snapshot and tags the new snapshot accordingly. Returns:
+   *   { ok: true, scope } when a snapshot was created
+   *   { ok: false, reason: "no-changes" } when nothing has changed
+   */
+  submitForecast: () =>
+    | { ok: true; scope: ForecastScope; lrpVersion: number; stfVersion: number }
+    | { ok: false; reason: "no-changes" };
   setCycleName: (name: string) => void;
   setCycleHorizonYears: (years: number) => void;
 }
@@ -1028,6 +1043,10 @@ export const useStore = create<AppStore>()(
         });
       },
 
+      // ─── v2.6 left-panel toggle ────────────────────────────────────
+      leftPanelHidden: false,
+      setLeftPanelHidden: (hidden) => set({ leftPanelHidden: hidden }),
+
       // ─── v2.6 demo seed: prior version for drift comparison ───────
       seedDemoVersionsIfEmpty: () => {
         const state = get();
@@ -1068,6 +1087,10 @@ export const useStore = create<AppStore>()(
         }
         baseline.version = 1;
         baseline.versionLabel = "Q1 2026 cycle baseline";
+        baseline.lrpVersion = 1;
+        baseline.stfVersion = 1;
+        baseline.lrpVersionLabel = "LRP v1 · Q1 2026 cycle";
+        baseline.stfVersionLabel = "STF v1 · Q1 2026 cycle";
 
         const computed = computeWithLifecycle(baseline);
         const variance = computeVariance(computed);
@@ -1081,6 +1104,9 @@ export const useStore = create<AppStore>()(
           reason: "Q1 cycle close — pre-S&OP review",
           version: 1,
         });
+        // Tag the seed baseline as "full" — it predates scope tracking but
+        // covers both LRP and STF assumptions.
+        snap.scope = "full";
         // Backdate the baseline timestamp so it reads as "prior cycle"
         const backdated = new Date(Date.now() - 8 * 7 * 86400_000).toISOString();
         snap.createdAt = backdated;
@@ -1091,6 +1117,10 @@ export const useStore = create<AppStore>()(
             ...s.forecast,
             version: 2,
             versionLabel: "Q2 2026 cycle (current)",
+            lrpVersion: 2,
+            stfVersion: 2,
+            lrpVersionLabel: "LRP v2 · Q2 2026 cycle",
+            stfVersionLabel: "STF v2 · Q2 2026 cycle",
           },
           versionHistory: [snap, ...s.versionHistory],
         }));
@@ -1237,20 +1267,69 @@ export const useStore = create<AppStore>()(
       },
       submitForecast: () => {
         const state = get();
-        // Run compute first to update views
+        // Compare current forecast against the most recent snapshot to
+        // figure out what changed. If nothing changed, refuse the submit
+        // so we don't pollute the version log with zero-diff entries.
+        const latest = state.versionHistory[0];
+        let scope: ForecastScope = "full";
+        if (latest) {
+          const baseline = latest.forecastSnapshot ?? latest.forecast;
+          const change = detectScopeChanges(baseline, state.forecast);
+          const detected = scopeFromChanges(change);
+          if (detected === null) {
+            return { ok: false as const, reason: "no-changes" as const };
+          }
+          scope = detected;
+        }
+
         const computed = computeWithLifecycle(state.forecast);
         const variance = computeVariance(computed);
-        const next = state.forecast.version + 1;
+
+        // Bump scope-specific version counters
+        const curLrpV = state.forecast.lrpVersion ?? state.forecast.version;
+        const curStfV = state.forecast.stfVersion ?? state.forecast.version;
+        const nextLrpV =
+          scope === "lrp" || scope === "full" ? curLrpV + 1 : curLrpV;
+        const nextStfV =
+          scope === "stf" || scope === "full" ? curStfV + 1 : curStfV;
+        // Umbrella version stays as max(lrp, stf) so legacy callers keep working
+        const nextUmbrella = Math.max(nextLrpV, nextStfV);
+
         const cycleName = state.forecast.cycleName ?? "current cycle";
-        const versionLabel = `Submitted forecast cycle ${cycleName}`;
+        const scopeLabel =
+          scope === "lrp" ? "LRP" : scope === "stf" ? "STF" : "Forecast";
+        const versionLabel = `${scopeLabel} v${
+          scope === "stf" ? nextStfV : nextLrpV
+        } · ${cycleName}`;
+
+        const now = new Date().toISOString();
         const updated: ConnectedForecast = {
           ...state.forecast,
-          version: next,
+          version: nextUmbrella,
           versionLabel,
           draftStatus: "submitted",
-          lastSubmittedAt: new Date().toISOString(),
+          lastSubmittedAt: now,
           lastSubmittedBy: state.currentDemoUser,
+          lrpVersion: nextLrpV,
+          stfVersion: nextStfV,
+          lrpVersionLabel:
+            scope === "lrp" || scope === "full"
+              ? `LRP v${nextLrpV} · ${cycleName}`
+              : state.forecast.lrpVersionLabel,
+          stfVersionLabel:
+            scope === "stf" || scope === "full"
+              ? `STF v${nextStfV} · ${cycleName}`
+              : state.forecast.stfVersionLabel,
+          lrpLastSubmittedAt:
+            scope === "lrp" || scope === "full"
+              ? now
+              : state.forecast.lrpLastSubmittedAt,
+          stfLastSubmittedAt:
+            scope === "stf" || scope === "full"
+              ? now
+              : state.forecast.stfLastSubmittedAt,
         };
+
         const snap = saveSnapshot(updated, computed, {
           user: state.currentDemoUser,
           triggerType: "manual-save",
@@ -1258,14 +1337,23 @@ export const useStore = create<AppStore>()(
           threshold: state.threshold,
           variance,
           label: versionLabel,
-          reason: `Submitted forecast cycle ${cycleName}`,
-          version: next,
+          reason: `Submitted ${scopeLabel.toLowerCase()} cycle ${cycleName}`,
+          version: nextUmbrella,
         });
+        snap.scope = scope;
+
         set((s) => ({
           forecast: updated,
           computed,
           versionHistory: [snap, ...s.versionHistory],
         }));
+
+        return {
+          ok: true as const,
+          scope,
+          lrpVersion: nextLrpV,
+          stfVersion: nextStfV,
+        };
       },
 
       // ─── v2.5 Addendum: Excel upload apply ───────────────────────
@@ -1302,7 +1390,7 @@ export const useStore = create<AppStore>()(
     }),
     {
       name: "forecastiq-v2",
-      version: 6,
+      version: 7,
       partialize: (state) => ({
         forecast: state.forecast,
         versionHistory: state.versionHistory,
@@ -1316,12 +1404,12 @@ export const useStore = create<AppStore>()(
         currentDemoUser: state.currentDemoUser,
         threshold: state.threshold,
         connectedSystems: state.connectedSystems,
+        leftPanelHidden: state.leftPanelHidden,
       }),
       migrate: ((persisted: unknown, version: number) => {
-        // Drop any state from < v6 — v2.6 added Input-First fields
-        // (lifecycleStage, lrpMethodology, epidemiologyInputs/marketShareInputs,
-        // overlays, draftStatus) on ConnectedForecast.
-        if (version < 6) return undefined;
+        // Drop any state from < v7 — v2.6.1 added scoped LRP/STF versions
+        // and snapshot scope tags. Re-seed cleanly so demo flows behave.
+        if (version < 7) return undefined;
         return persisted;
       }) as never,
       merge: (persisted, current) => {

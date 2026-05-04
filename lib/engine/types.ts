@@ -433,7 +433,23 @@ export interface ConnectedForecast {
   cycleName?: string;
   /** Cycle horizon in years */
   cycleHorizonYears?: number;
+
+  /**
+   * v2.6.1 Scoped versioning. LRP and STF travel on independent version
+   * counters because they're authored on different cadences (LRP is
+   * quarterly / annual; STF is weekly). The umbrella `version` field
+   * above remains as a max-of-the-two for legacy callers.
+   */
+  lrpVersion?: number;
+  lrpVersionLabel?: string;
+  lrpLastSubmittedAt?: string;
+  stfVersion?: number;
+  stfVersionLabel?: string;
+  stfLastSubmittedAt?: string;
 }
+
+/** Scope of a forecast change / snapshot. */
+export type ForecastScope = "lrp" | "stf" | "full";
 
 export interface AnnualDataPoint {
   year: number;
@@ -644,6 +660,14 @@ export interface VersionSnapshot {
   id: string;
   /** which forecast this snapshots */
   forecastId: string;
+
+  /**
+   * v2.6.1 What scope of the forecast this snapshot represents.
+   * "lrp" — only LRP-side assumptions changed
+   * "stf" — only STF-side assumptions changed
+   * "full" — both, or initial baseline / pre-scope migration snapshot
+   */
+  scope?: ForecastScope;
 
   // Attribution
   createdBy: DemoUser;

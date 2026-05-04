@@ -9,6 +9,8 @@ import { formatUsdShort } from "@/lib/format";
 interface Props {
   /** When set, this version id drives the comparison. Otherwise latest snapshot. */
   compareToVersionId: string | null;
+  /** Filter the displayed diffs to only this scope (lrp / stf). */
+  scope?: "lrp" | "stf";
 }
 
 /**
@@ -16,7 +18,16 @@ interface Props {
  * comparison version, plus the headline annual delta that resulted, so the
  * forecaster can read the trajectory chart with that context in mind.
  */
-export function ChangeSummaryCard({ compareToVersionId }: Props) {
+const LRP_DRIVERS = new Set([
+  "Epidemiology",
+  "Market Share",
+  "Pricing",
+  "Events",
+  "Setup",
+]);
+const STF_DRIVERS = new Set(["STF Weekly", "STF Events", "Inventory"]);
+
+export function ChangeSummaryCard({ compareToVersionId, scope }: Props) {
   const forecast = useStore((s) => s.forecast);
   const computed = useStore((s) => s.computed);
   const versions = useStore((s) => s.versionHistory);
@@ -36,8 +47,11 @@ export function ChangeSummaryCard({ compareToVersionId }: Props) {
 
   const diffs = useMemo<ForecastDiff[]>(() => {
     if (!baseline) return [];
-    return diffForecast(baseline.forecastSnapshot ?? baseline.forecast, forecast);
-  }, [baseline, forecast]);
+    const all = diffForecast(baseline.forecastSnapshot ?? baseline.forecast, forecast);
+    if (!scope) return all;
+    if (scope === "lrp") return all.filter((d) => LRP_DRIVERS.has(d.driver));
+    return all.filter((d) => STF_DRIVERS.has(d.driver));
+  }, [baseline, forecast, scope]);
 
   // Headline trajectory deltas at peak / cycle year / endpoint
   const trajectory = useMemo(() => {
@@ -62,13 +76,44 @@ export function ChangeSummaryCard({ compareToVersionId }: Props) {
     };
   }, [computed, baselineComputed, forecast.timeframe.forecastStart, forecast.timeframe.forecastEnd]);
 
+  const scopeName = scope === "lrp" ? "LRP" : scope === "stf" ? "STF" : "forecast";
+
   if (!baseline || !trajectory) {
     return (
       <div className="card border-l-4 border-muted">
         <div className="text-sm text-muted">
-          No prior version to compare against. Submit the forecast at least
-          twice to see drift here.
+          No prior {scopeName} version to compare against. Submit the {scopeName}{" "}
+          at least once with edits to see drift here.
         </div>
+      </div>
+    );
+  }
+
+  // Empty state — comparison version has no scope-relevant changes vs current.
+  if (diffs.length === 0) {
+    return (
+      <div className="card border-l-4 border-muted bg-background">
+        <div className="flex items-baseline justify-between flex-wrap gap-2">
+          <div>
+            <h3 className="font-heading text-h3 text-secondary">
+              No {scopeName} changes vs comparison
+            </h3>
+            <p className="text-xs text-muted mt-1">
+              v{forecast.version} ·{" "}
+              <span className="font-mono">{forecast.versionLabel}</span> matches
+              v{baseline.version} ·{" "}
+              <span className="font-mono">{baseline.label}</span> on{" "}
+              {scopeName}-side assumptions.
+            </p>
+          </div>
+          <span className="pill text-[10px] bg-emerald-500/10 text-emerald-700 border border-emerald-500/30">
+            No drift
+          </span>
+        </div>
+        <p className="text-[11px] text-muted mt-3">
+          Pick a different version above (one with {scopeName} edits) to see
+          drift, or edit and re-submit to create a new {scopeName} version.
+        </p>
       </div>
     );
   }
@@ -83,12 +128,14 @@ export function ChangeSummaryCard({ compareToVersionId }: Props) {
       <div className="flex items-baseline justify-between flex-wrap gap-2 mb-3">
         <div>
           <h3 className="font-heading text-h3 text-secondary">
-            Change since prior cycle
+            {scope === "lrp"
+              ? "LRP change since prior cycle"
+              : scope === "stf"
+              ? "STF change since prior cycle"
+              : "Change since prior cycle"}
           </h3>
           <p className="text-xs text-muted">
-            Comparing v{forecast.version} ·{" "}
-            <span className="font-mono">{forecast.versionLabel}</span> against v
-            {baseline.version} ·{" "}
+            Comparing current against{" "}
             <span className="font-mono">{baseline.label}</span>
           </p>
         </div>
