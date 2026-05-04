@@ -3,9 +3,13 @@
 import { ReactNode, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { Link2, Upload } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { DEMO_USERS, getBrandConfig } from "@/lib/engine";
 import type { BrandKey, DemoUser } from "@/lib/engine";
+import { aggregateStatusDot } from "@/lib/systems";
+import { SystemConnectDialog } from "./SystemConnectDialog";
+import { UploadPreviewPanel } from "./UploadPreviewPanel";
 
 interface TabDef {
   id: string;
@@ -36,7 +40,11 @@ export function ForecastWorkspaceShell({ children }: { children: ReactNode }) {
   const varianceStatus = useStore((s) => s.varianceStatus);
   const computed = useStore((s) => s.computed);
   const threshold = useStore((s) => s.threshold);
+  const connectedSystems = useStore((s) => s.connectedSystems);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [connectDialogOpen, setConnectDialogOpen] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
 
   const brandConfig = useMemo(
     () => getBrandConfig(forecast.brand as BrandKey),
@@ -82,6 +90,28 @@ export function ForecastWorkspaceShell({ children }: { children: ReactNode }) {
   function pickUser(u: DemoUser) {
     setDemoUser(u);
     setUserMenuOpen(false);
+  }
+
+  const dotColor = useMemo(
+    () => aggregateStatusDot(connectedSystems),
+    [connectedSystems],
+  );
+  const dotBg =
+    dotColor === "green"
+      ? "bg-emerald-500"
+      : dotColor === "amber"
+      ? "bg-amber-500"
+      : dotColor === "red"
+      ? "bg-red-500"
+      : "bg-gray-400";
+
+  function handleFilePick(ev: React.ChangeEvent<HTMLInputElement>) {
+    const file = ev.target.files?.[0];
+    if (!file) return;
+    setUploadFile(file);
+    setUploadOpen(true);
+    // Reset so picking the same file again still triggers the panel
+    ev.target.value = "";
   }
 
   return (
@@ -174,6 +204,36 @@ export function ForecastWorkspaceShell({ children }: { children: ReactNode }) {
           >
             Save Version
           </button>
+
+          {/* System Connect */}
+          <button
+            className="btn-ghost text-xs flex items-center gap-1.5 relative"
+            onClick={() => setConnectDialogOpen(true)}
+            title="Connect to existing systems"
+          >
+            <Link2 size={14} />
+            <span className="hidden lg:inline">Connect</span>
+            <span
+              className={`w-2 h-2 rounded-full ${dotBg}`}
+              aria-label={`Connection status: ${dotColor}`}
+            />
+          </button>
+
+          {/* Excel Upload */}
+          <label
+            className="btn-ghost text-xs flex items-center gap-1.5 cursor-pointer"
+            title="Upload Excel forecast template"
+          >
+            <Upload size={14} />
+            <span className="hidden lg:inline">Upload</span>
+            <input
+              type="file"
+              accept=".xlsx,.xls"
+              className="hidden"
+              onChange={handleFilePick}
+            />
+          </label>
+
           <button
             className="btn-secondary text-xs"
             disabled={!brandConfig.stfActive}
@@ -187,6 +247,19 @@ export function ForecastWorkspaceShell({ children }: { children: ReactNode }) {
           </button>
         </div>
       </div>
+
+      <SystemConnectDialog
+        open={connectDialogOpen}
+        onClose={() => setConnectDialogOpen(false)}
+      />
+      <UploadPreviewPanel
+        open={uploadOpen}
+        file={uploadFile}
+        onClose={() => {
+          setUploadOpen(false);
+          setUploadFile(null);
+        }}
+      />
 
       {/* Tab bar — three tabs only, constant across brands */}
       <div className="sticky top-32 z-10 bg-background border-b border-border h-12 flex items-center px-6">

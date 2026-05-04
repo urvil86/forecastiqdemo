@@ -32,6 +32,15 @@ import {
   type LeverId,
   type OptimizationConstraint,
 } from "./growth-intel";
+import {
+  defaultConnections,
+  type SystemConnection,
+  type SyncFrequency,
+} from "./systems";
+import {
+  applyUploadToForecast,
+  type UploadPayload,
+} from "./upload-parser";
 
 type Zone = "setup" | "build" | "review" | "connect";
 
@@ -170,6 +179,22 @@ interface AppStore {
 
   // v2.5 Brand selection (independent of seed/lifecycle)
   setBrand: (brand: ConnectedForecast["brand"]) => void;
+
+  // v2.5 Addendum: System connections
+  connectedSystems: Record<string, SystemConnection>;
+  setSystemConnection: (
+    systemId: string,
+    config: Partial<SystemConnection> & { status: SystemConnection["status"] },
+  ) => void;
+  syncSystem: (systemId: string) => number;
+  disconnectSystem: (systemId: string) => void;
+  setSystemFrequency: (systemId: string, frequency: SyncFrequency) => void;
+
+  // v2.5 Addendum: Excel upload
+  applyUpload: (
+    payload: UploadPayload,
+    options: { mode: "active" | "scenario"; reason?: string },
+  ) => void;
 }
 
 let recomputeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -892,6 +917,112 @@ export const useStore = create<AppStore>()(
         set({ forecast: next, activeSeedKey: map[brand] });
         scheduleRecompute(get);
       },
+
+      // ─── v2.5 Addendum: System connections ─────────────────────────
+      connectedSystems: defaultConnections(),
+      setSystemConnection: (systemId, config) => {
+        set((s) => ({
+          connectedSystems: {
+            ...s.connectedSystems,
+            [systemId]: {
+              ...(s.connectedSystems[systemId] ?? {
+                status: "not-connected",
+                syncFrequency: "daily",
+              }),
+              ...config,
+            },
+          },
+        }));
+      },
+      syncSystem: (systemId) => {
+        const now = new Date();
+        const recordsUpdated = 12 + Math.floor(Math.random() * 36);
+        const nextSyncOffsetH =
+          get().connectedSystems[systemId]?.syncFrequency === "weekly"
+            ? 168
+            : get().connectedSystems[systemId]?.syncFrequency === "hourly"
+            ? 1
+            : get().connectedSystems[systemId]?.syncFrequency === "realtime"
+            ? 0.05
+            : 24;
+        set((s) => {
+          const existing = s.connectedSystems[systemId];
+          if (!existing) return s;
+          return {
+            connectedSystems: {
+              ...s.connectedSystems,
+              [systemId]: {
+                ...existing,
+                status: "connected",
+                lastSync: now.toISOString(),
+                nextSync: new Date(
+                  now.getTime() + nextSyncOffsetH * 3600_000,
+                ).toISOString(),
+              },
+            },
+          };
+        });
+        return recordsUpdated;
+      },
+      disconnectSystem: (systemId) => {
+        set((s) => {
+          const existing = s.connectedSystems[systemId];
+          if (!existing) return s;
+          return {
+            connectedSystems: {
+              ...s.connectedSystems,
+              [systemId]: {
+                status: "not-connected",
+                syncFrequency: existing.syncFrequency,
+              },
+            },
+          };
+        });
+      },
+      setSystemFrequency: (systemId, frequency) => {
+        set((s) => {
+          const existing = s.connectedSystems[systemId];
+          if (!existing) return s;
+          return {
+            connectedSystems: {
+              ...s.connectedSystems,
+              [systemId]: { ...existing, syncFrequency: frequency },
+            },
+          };
+        });
+      },
+
+      // ─── v2.5 Addendum: Excel upload apply ───────────────────────
+      applyUpload: (payload, options) => {
+        const state = get();
+        const merged = applyUploadToForecast(payload, state.forecast);
+        const next = merged.version + 1;
+        const versionLabel =
+          options.mode === "scenario"
+            ? `Upload scenario · ${payload.filename}`
+            : `Applied upload · ${payload.filename}`;
+        const updated = { ...merged, version: next, versionLabel };
+        const computed = computeWithLifecycle(updated);
+        const variance = computeVariance(computed);
+        const reason = `Applied upload: ${payload.filename}${
+          options.reason ? ` — ${options.reason}` : ""
+        }`;
+        const snap = saveSnapshot(updated, computed, {
+          user: state.currentDemoUser,
+          triggerType: "manual-save",
+          triggerReason: "user-initiated",
+          threshold: state.threshold,
+          variance,
+          label: versionLabel,
+          reason,
+          version: next,
+        });
+        set((s) => ({
+          forecast: updated,
+          computed,
+          versionHistory: [snap, ...s.versionHistory],
+        }));
+      },
     }),
     {
       name: "forecastiq-v2",
@@ -908,6 +1039,7 @@ export const useStore = create<AppStore>()(
         activeSeedKey: state.activeSeedKey,
         currentDemoUser: state.currentDemoUser,
         threshold: state.threshold,
+        connectedSystems: state.connectedSystems,
       }),
       migrate: ((persisted: unknown, version: number) => {
         // Drop any state from < v5 — v2.5 introduced new VersionSnapshot
@@ -937,6 +1069,7 @@ export const useStore = create<AppStore>()(
           versionHistory: vh,
           currentDemoUser: p.currentDemoUser ?? DEFAULT_DEMO_USER,
           threshold: p.threshold ?? DEFAULT_THRESHOLD,
+          connectedSystems: p.connectedSystems ?? defaultConnections(),
           forecast: valid ? (f as ConnectedForecast) : seed,
         };
       },
