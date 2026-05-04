@@ -5,11 +5,11 @@ import { useRouter } from "next/navigation";
 
 export function LegacyRedirectBanner({ target, label }: { target: string; label: string }) {
   const router = useRouter();
-  const [seconds, setSeconds] = useState(3);
+  const [seconds, setSeconds] = useState(2);
 
   useEffect(() => {
     const t = setInterval(() => setSeconds((s) => Math.max(0, s - 1)), 1000);
-    const r = setTimeout(() => router.replace(target), 3000);
+    const r = setTimeout(() => router.replace(target), 2000);
     return () => {
       clearInterval(t);
       clearTimeout(r);

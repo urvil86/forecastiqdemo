@@ -41,13 +41,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       if (!meta) return;
       if (e.key === "1") {
         e.preventDefault();
-        router.push("/forecast/lrp/");
+        router.push("/forecast/#lrp");
       } else if (e.key === "2") {
         e.preventDefault();
-        router.push("/forecast/stf/");
+        router.push("/forecast/#stf");
       } else if (e.key === "3") {
         e.preventDefault();
-        router.push("/forecast/connect/");
+        router.push("/forecast/#reconcile");
       } else if (e.key === "4") {
         e.preventDefault();
         router.push("/forecast/plan/");
@@ -109,13 +109,30 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <aside className="w-64 bg-secondary text-white text-sm flex-shrink-0 sticky top-16 self-start h-[calc(100vh-4rem)] overflow-y-auto">
           <nav className="py-4">
             <SectionHeader>Workspace</SectionHeader>
-            <NavItem href="/forecast/lrp/" active={pathname?.startsWith("/forecast/lrp") ?? false} label="LRP" />
-            <NavItem href="/forecast/stf/" active={pathname?.startsWith("/forecast/stf") ?? false} label="STF" />
-            <NavItem href="/forecast/connect/" active={pathname?.startsWith("/forecast/connect") ?? false} label="Connect" highlight />
+            <NavItem
+              href="/forecast/"
+              active={
+                (pathname === "/forecast" || pathname === "/forecast/") ||
+                (pathname?.startsWith("/forecast/") &&
+                  !pathname?.startsWith("/forecast/opportunities") &&
+                  !pathname?.startsWith("/forecast/plan"))
+                  ? true
+                  : false
+              }
+              label="Forecast"
+            />
             <NavItem href="/forecast/opportunities/" active={pathname?.startsWith("/forecast/opportunities") ?? false} label="Opportunities" />
             <NavItem href="/forecast/plan/" active={pathname?.startsWith("/forecast/plan") ?? false} label="Plan ★" highlight />
+
+            <div className="mt-8" />
+            <SectionHeader>Workflow Anchors</SectionHeader>
+            <NavItem href="/forecast/#lrp" active={false} label="↳ Long Range Plan" />
+            <NavItem href="/forecast/#stf" active={false} label="↳ Short Term Forecast" />
+            <NavItem href="/forecast/#reconcile" active={false} label="↳ Reconcile & Save" />
+
+            <div className="mt-8" />
+            <SectionHeader>Tools</SectionHeader>
             <NavItem href="/forecast/calc-modules/" active={pathname?.startsWith("/forecast/calc-modules") ?? false} label="Calculation Modules" />
-            <NavItem href="/forecast/review/lrp/" active={pathname?.startsWith("/forecast/review") ?? false} label="Review" />
 
             <div className="mt-8" />
             <SectionHeader>Demo Helpers</SectionHeader>

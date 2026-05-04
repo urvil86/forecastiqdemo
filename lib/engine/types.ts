@@ -301,6 +301,12 @@ export interface ConnectedForecast {
   lrp: TrendFitInputs;
   stf: STFInputs;
   phasing: PhasingProfile;
+  /**
+   * v2.5: lifecycleContext is retained internally so the existing engine
+   * (computeWithLifecycle, lifecycle.ts, postLoeConfig flows) continues to
+   * power compute paths. v2.5 UI does not surface lifecycle as a mode —
+   * brand defaults are read from BrandConfig instead.
+   */
   lifecycleContext: LifecycleContext;
   version: number;
   versionLabel: string;
@@ -457,10 +463,95 @@ export interface ReconciliationEvent {
   proposedAction: string;
 }
 
-export interface VersionSnapshot {
+// ─── v2.5 Brand / Threshold / Demo User / Snapshot types ──────────
+
+export type BrandKey = "Ocrevus" | "Zunovo" | "Fenebrutinib";
+
+export type LrpMethodology =
+  | "TrendFit"
+  | "PatientBased"
+  | "AnalogWeighted"
+  | "Hybrid";
+
+export interface BrandConfig {
+  brand: BrandKey;
+  defaultMethodology: LrpMethodology;
+  /** Whether STF section is active or shows "no actuals yet" */
+  stfActive: boolean;
+  /** For brands with hybrid methodology (Zunovo case) */
+  hybridConfig?: {
+    primaryMethodology: "TrendFit" | "AnalogWeighted";
+    secondaryMethodology: "TrendFit" | "AnalogWeighted";
+    blendWeights: { primary: number; secondary: number };
+  };
+  /** For brands using AnalogWeighted (Fenebrutinib pre-launch case) */
+  analogConfig?: {
+    analogs: { brand: string; weight: number }[];
+    /** cumulative PoS, applied to the resulting curve */
+    posMultiplier?: number;
+  };
+}
+
+export interface ThresholdConfig {
+  rollingWindow: "4-week" | "8-week" | "13-week";
+  /** e.g., 5 means ±5% */
+  thresholdPct: number;
+  appliesTo: "rolling-variance" | "period-variance" | "both";
+}
+
+export interface DemoUser {
   id: string;
+  name: string;
+  /** "Brand Operations Lead", "Forecasting Lead", etc. */
+  role: string;
+  initials: string;
+}
+
+export type ReconciliationAction =
+  | "refresh-lrp"
+  | "adjust-stf"
+  | "document-accept";
+
+export interface VersionSnapshot {
+  /** unique snapshot id */
+  id: string;
+  /** which forecast this snapshots */
+  forecastId: string;
+
+  // Attribution
+  createdBy: DemoUser;
+  createdAt: string;
+
+  // Trigger
+  triggerType: "reconciliation" | "manual-save" | "scheduled";
+  triggerReason: "variance-breach" | "planned-checkpoint" | "user-initiated";
+
+  /** Action taken at reconciliation (only when triggerType === 'reconciliation') */
+  reconciliationAction?: ReconciliationAction;
+
+  /** Free-text reason (required for document-accept, optional otherwise) */
+  reasonNote?: string;
+
+  /** Notify list (display only — production wires to email) */
+  notifyList?: { name: string; email: string }[];
+
+  // Threshold context at time of save
+  thresholdAtSave: ThresholdConfig;
+  varianceAtSave: {
+    rolling4Week: number;
+    rolling13Week: number;
+    ytd: number;
+  };
+
+  // Full snapshot of the forecast state at time of save
+  forecastSnapshot: ConnectedForecast;
+  computedSnapshot: ComputedForecastConnected;
+
+  // Legacy / display fields preserved for backwards compatibility
   version: number;
   label: string;
+  /** Alias for createdAt — kept so existing UI continues to work */
   timestamp: string;
+  /** Alias for forecastSnapshot — kept for backwards compatibility */
   forecast: ConnectedForecast;
 }

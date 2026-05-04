@@ -1,7 +1,7 @@
 "use client";
 
-import { StfAuthoringTab } from "@/components/stf/StfAuthoringTab";
+import { LegacyRedirectBanner } from "@/components/forecast/LegacyRedirectBanner";
 
 export default function ForecastStfPage() {
-  return <StfAuthoringTab embeddedInWorkspace />;
+  return <LegacyRedirectBanner target="/forecast/#stf" label="STF" />;
 }

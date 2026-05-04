@@ -6,10 +6,21 @@ import {
   computeWithLifecycle,
   getSeedForecast,
   getSeedForecastByKey,
+  saveSnapshot,
+  restoreFromSnapshot,
+  computeVariance,
+  statusForVariance,
+  DEMO_USERS,
+  DEFAULT_DEMO_USER,
+  DEFAULT_THRESHOLD,
   type ConnectedForecast,
   type ComputedForecastConnected,
+  type DemoUser,
   type ForecastSeedKey,
   type LifecycleMode,
+  type ReconciliationAction,
+  type ThresholdConfig,
+  type VarianceStatus,
   type VersionSnapshot,
 } from "./engine";
 import {
@@ -21,6 +32,15 @@ import {
   type LeverId,
   type OptimizationConstraint,
 } from "./growth-intel";
+import {
+  defaultConnections,
+  type SystemConnection,
+  type SyncFrequency,
+} from "./systems";
+import {
+  applyUploadToForecast,
+  type UploadPayload,
+} from "./upload-parser";
 
 type Zone = "setup" | "build" | "review" | "connect";
 
@@ -134,6 +154,47 @@ interface AppStore {
   setAgentOpen: (open: boolean) => void;
   sendAgentMessage: (text: string, pageContext?: string) => Promise<void>;
   clearAgentMessages: () => void;
+
+  // v2.5 Demo user, threshold, snapshot system
+  currentDemoUser: DemoUser;
+  threshold: ThresholdConfig;
+  setDemoUser: (user: DemoUser) => void;
+  setThreshold: (threshold: ThresholdConfig) => void;
+  createSnapshot: (ctx: {
+    triggerType: VersionSnapshot["triggerType"];
+    triggerReason: VersionSnapshot["triggerReason"];
+    action?: ReconciliationAction;
+    reason?: string;
+    notify?: { name: string; email: string }[];
+    label?: string;
+  }) => VersionSnapshot | null;
+  restoreSnapshot: (snapshotId: string) => void;
+  /** Compute current variance status against current threshold */
+  varianceStatus: () => {
+    rolling4Week: number;
+    rolling13Week: number;
+    ytd: number;
+    status: VarianceStatus;
+  };
+
+  // v2.5 Brand selection (independent of seed/lifecycle)
+  setBrand: (brand: ConnectedForecast["brand"]) => void;
+
+  // v2.5 Addendum: System connections
+  connectedSystems: Record<string, SystemConnection>;
+  setSystemConnection: (
+    systemId: string,
+    config: Partial<SystemConnection> & { status: SystemConnection["status"] },
+  ) => void;
+  syncSystem: (systemId: string) => number;
+  disconnectSystem: (systemId: string) => void;
+  setSystemFrequency: (systemId: string, frequency: SyncFrequency) => void;
+
+  // v2.5 Addendum: Excel upload
+  applyUpload: (
+    payload: UploadPayload,
+    options: { mode: "active" | "scenario"; reason?: string },
+  ) => void;
 }
 
 let recomputeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -739,15 +800,20 @@ export const useStore = create<AppStore>()(
         const lift = r.summary.totalExpectedImpactUsdMid;
         const label = `Growth Intel scenario · $${(r.summary.totalAllocatedUsd / 1e6).toFixed(0)}M budget · +${(lift / 1e6).toFixed(0)}M expected lift`;
         const next = get().forecast.version + 1;
-        const snap: VersionSnapshot = {
-          id: `gi-${Date.now().toString(36)}`,
-          version: next,
+        const updatedForecast = { ...get().forecast, version: next, versionLabel: label };
+        const computed = get().computed ?? computeWithLifecycle(updatedForecast);
+        const variance = computeVariance(computed);
+        const snap = saveSnapshot(updatedForecast, computed, {
+          user: get().currentDemoUser,
+          triggerType: "manual-save",
+          triggerReason: "user-initiated",
+          threshold: get().threshold,
+          variance,
           label,
-          timestamp: new Date().toISOString(),
-          forecast: { ...get().forecast, version: next, versionLabel: label },
-        };
+          version: next,
+        });
         set((state) => ({
-          forecast: { ...state.forecast, version: next, versionLabel: label },
+          forecast: updatedForecast,
           versionHistory: [snap, ...state.versionHistory],
         }));
         return snap.id;
@@ -755,15 +821,20 @@ export const useStore = create<AppStore>()(
       saveVersion: (label) => {
         set((state) => {
           const next = state.forecast.version + 1;
-          const snap: VersionSnapshot = {
-            id: `v${next}-${Date.now().toString(36)}`,
-            version: next,
+          const updated = { ...state.forecast, version: next, versionLabel: label };
+          const computed = state.computed ?? computeWithLifecycle(updated);
+          const variance = computeVariance(computed);
+          const snap = saveSnapshot(updated, computed, {
+            user: state.currentDemoUser,
+            triggerType: "manual-save",
+            triggerReason: "user-initiated",
+            threshold: state.threshold,
+            variance,
             label,
-            timestamp: new Date().toISOString(),
-            forecast: { ...state.forecast, version: next, versionLabel: label },
-          };
+            version: next,
+          });
           return {
-            forecast: { ...state.forecast, version: next, versionLabel: label },
+            forecast: updated,
             versionHistory: [snap, ...state.versionHistory],
           };
         });
@@ -772,7 +843,7 @@ export const useStore = create<AppStore>()(
         set((state) => {
           const snap = state.versionHistory.find((v) => v.id === versionId);
           if (!snap) return state;
-          return { forecast: snap.forecast };
+          return { forecast: snap.forecastSnapshot ?? snap.forecast };
         });
         scheduleRecompute(get);
       },
@@ -780,10 +851,182 @@ export const useStore = create<AppStore>()(
         set({ forecast: getSeedForecast(), versionHistory: [] });
         scheduleRecompute(get);
       },
+
+      // ─── v2.5 demo user / threshold / snapshot ─────────────────────
+      currentDemoUser: DEFAULT_DEMO_USER,
+      threshold: DEFAULT_THRESHOLD,
+      setDemoUser: (user) => set({ currentDemoUser: user }),
+      setThreshold: (threshold) => set({ threshold }),
+      createSnapshot: (ctx) => {
+        const state = get();
+        const next = state.forecast.version + 1;
+        const label = ctx.label ?? `${ctx.action ? ctx.action : "Snapshot"} ${new Date().toLocaleTimeString()}`;
+        const updated = { ...state.forecast, version: next, versionLabel: label };
+        const computed = state.computed ?? computeWithLifecycle(updated);
+        const variance = computeVariance(computed);
+        const snap = saveSnapshot(updated, computed, {
+          user: state.currentDemoUser,
+          triggerType: ctx.triggerType,
+          triggerReason: ctx.triggerReason,
+          action: ctx.action,
+          reason: ctx.reason,
+          notify: ctx.notify,
+          threshold: state.threshold,
+          variance,
+          label,
+          version: next,
+        });
+        set((s) => ({
+          forecast: updated,
+          versionHistory: [snap, ...s.versionHistory],
+        }));
+        return snap;
+      },
+      restoreSnapshot: (snapshotId) => {
+        const state = get();
+        const snap = state.versionHistory.find((v) => v.id === snapshotId);
+        if (!snap) return;
+        const { newForecastState, newSnapshot } = restoreFromSnapshot(
+          snap,
+          state.currentDemoUser,
+          state.threshold,
+        );
+        set((s) => ({
+          forecast: newForecastState,
+          versionHistory: [newSnapshot, ...s.versionHistory],
+        }));
+        scheduleRecompute(get);
+      },
+      varianceStatus: () => {
+        const state = get();
+        const v = computeVariance(state.computed);
+        const rollingPick =
+          state.threshold.rollingWindow === "13-week"
+            ? v.rolling13Week
+            : v.rolling4Week;
+        const status = statusForVariance(rollingPick, state.threshold);
+        return { ...v, status };
+      },
+      setBrand: (brand) => {
+        const map: Record<ConnectedForecast["brand"], ForecastSeedKey> = {
+          Ocrevus: "ocrevus-exclusivity",
+          Zunovo: "zunovo-exclusivity",
+          Fenebrutinib: "fenebrutinib-prelaunch",
+        };
+        const next = getSeedForecastByKey(map[brand]);
+        set({ forecast: next, activeSeedKey: map[brand] });
+        scheduleRecompute(get);
+      },
+
+      // ─── v2.5 Addendum: System connections ─────────────────────────
+      connectedSystems: defaultConnections(),
+      setSystemConnection: (systemId, config) => {
+        set((s) => ({
+          connectedSystems: {
+            ...s.connectedSystems,
+            [systemId]: {
+              ...(s.connectedSystems[systemId] ?? {
+                status: "not-connected",
+                syncFrequency: "daily",
+              }),
+              ...config,
+            },
+          },
+        }));
+      },
+      syncSystem: (systemId) => {
+        const now = new Date();
+        const recordsUpdated = 12 + Math.floor(Math.random() * 36);
+        const nextSyncOffsetH =
+          get().connectedSystems[systemId]?.syncFrequency === "weekly"
+            ? 168
+            : get().connectedSystems[systemId]?.syncFrequency === "hourly"
+            ? 1
+            : get().connectedSystems[systemId]?.syncFrequency === "realtime"
+            ? 0.05
+            : 24;
+        set((s) => {
+          const existing = s.connectedSystems[systemId];
+          if (!existing) return s;
+          return {
+            connectedSystems: {
+              ...s.connectedSystems,
+              [systemId]: {
+                ...existing,
+                status: "connected",
+                lastSync: now.toISOString(),
+                nextSync: new Date(
+                  now.getTime() + nextSyncOffsetH * 3600_000,
+                ).toISOString(),
+              },
+            },
+          };
+        });
+        return recordsUpdated;
+      },
+      disconnectSystem: (systemId) => {
+        set((s) => {
+          const existing = s.connectedSystems[systemId];
+          if (!existing) return s;
+          return {
+            connectedSystems: {
+              ...s.connectedSystems,
+              [systemId]: {
+                status: "not-connected",
+                syncFrequency: existing.syncFrequency,
+              },
+            },
+          };
+        });
+      },
+      setSystemFrequency: (systemId, frequency) => {
+        set((s) => {
+          const existing = s.connectedSystems[systemId];
+          if (!existing) return s;
+          return {
+            connectedSystems: {
+              ...s.connectedSystems,
+              [systemId]: { ...existing, syncFrequency: frequency },
+            },
+          };
+        });
+      },
+
+      // ─── v2.5 Addendum: Excel upload apply ───────────────────────
+      applyUpload: (payload, options) => {
+        const state = get();
+        const merged = applyUploadToForecast(payload, state.forecast);
+        const next = merged.version + 1;
+        const versionLabel =
+          options.mode === "scenario"
+            ? `Upload scenario · ${payload.filename}`
+            : `Applied upload · ${payload.filename}`;
+        const updated = { ...merged, version: next, versionLabel };
+        const computed = computeWithLifecycle(updated);
+        const variance = computeVariance(computed);
+        const reason = `Applied upload: ${payload.filename}${
+          options.reason ? ` — ${options.reason}` : ""
+        }`;
+        const snap = saveSnapshot(updated, computed, {
+          user: state.currentDemoUser,
+          triggerType: "manual-save",
+          triggerReason: "user-initiated",
+          threshold: state.threshold,
+          variance,
+          label: versionLabel,
+          reason,
+          version: next,
+        });
+        set((s) => ({
+          forecast: updated,
+          computed,
+          versionHistory: [snap, ...s.versionHistory],
+        }));
+      },
     }),
     {
       name: "forecastiq-v2",
-      version: 3,
+      version: 5,
       partialize: (state) => ({
         forecast: state.forecast,
         versionHistory: state.versionHistory,
@@ -794,10 +1037,14 @@ export const useStore = create<AppStore>()(
         demoMode: state.demoMode,
         growthIntel: state.growthIntel,
         activeSeedKey: state.activeSeedKey,
+        currentDemoUser: state.currentDemoUser,
+        threshold: state.threshold,
+        connectedSystems: state.connectedSystems,
       }),
       migrate: ((persisted: unknown, version: number) => {
-        // Drop any state from < v3 since we added required lifecycleContext.
-        if (version < 3) return undefined;
+        // Drop any state from < v5 — v2.5 introduced new VersionSnapshot
+        // shape, demo user, and threshold persistence.
+        if (version < 5) return undefined;
         return persisted;
       }) as never,
       merge: (persisted, current) => {
@@ -812,9 +1059,17 @@ export const useStore = create<AppStore>()(
           Array.isArray(f.phasing?.erdByMonth) &&
           f.lifecycleContext &&
           typeof f.lifecycleContext.mode === "string";
+        // Drop legacy snapshots that don't have the v2.5 shape
+        const vh = (p.versionHistory ?? []).filter(
+          (v) => (v as VersionSnapshot).forecastId && (v as VersionSnapshot).createdBy,
+        );
         return {
           ...current,
           ...p,
+          versionHistory: vh,
+          currentDemoUser: p.currentDemoUser ?? DEFAULT_DEMO_USER,
+          threshold: p.threshold ?? DEFAULT_THRESHOLD,
+          connectedSystems: p.connectedSystems ?? defaultConnections(),
           forecast: valid ? (f as ConnectedForecast) : seed,
         };
       },
