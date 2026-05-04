@@ -15,12 +15,15 @@ import { ConfidenceCone } from "@/components/lrp/review/ConfidenceCone";
 import { ReviewZone } from "@/components/stf/ReviewZone";
 import { ForecastStackView } from "@/components/connect/ForecastStackView";
 import { SourceOfTruthMap } from "@/components/connect/SourceOfTruthMap";
+import { ChangeSummaryCard } from "@/components/forecast/views/ChangeSummaryCard";
+import { StfCycleCompareChart } from "@/components/forecast/views/StfCycleCompareChart";
 
 type AnchorId = "lrp" | "stf" | "combined";
 
 export default function ForecastViewsPage() {
   const forecast = useStore((s) => s.forecast);
   const setDraftStatus = useStore((s) => s.setDraftStatus);
+  const versions = useStore((s) => s.versionHistory);
   const router = useRouter();
   const [active, setActive] = useState<AnchorId>("lrp");
 
@@ -31,6 +34,16 @@ export default function ForecastViewsPage() {
   const stage = forecast.lifecycleStage ?? brandConfig.defaultStage;
   const draft = forecast.draftStatus ?? "draft";
   const stfVisible = stage !== "pre-launch";
+
+  // Compare-to version: defaults to the latest snapshot (prior submission).
+  const [compareToVersionId, setCompareToVersionId] = useState<string | null>(
+    null,
+  );
+  useEffect(() => {
+    if (compareToVersionId === null && versions.length > 0) {
+      setCompareToVersionId(versions[0].id);
+    }
+  }, [versions, compareToVersionId]);
 
   const anchors = useMemo(() => {
     const list: { id: AnchorId; label: string }[] = [
@@ -111,7 +124,7 @@ export default function ForecastViewsPage() {
     <>
       {/* Action strip */}
       <div className="border-b border-border px-8 py-3 flex items-center justify-between flex-wrap gap-2 bg-surface">
-        <div className="flex items-baseline gap-3">
+        <div className="flex items-baseline gap-3 flex-wrap">
           <span className="text-xs text-muted">Forecast version:</span>
           <span className="pill text-[10px] bg-emerald-500/10 text-emerald-700 border border-emerald-500/30">
             {fmtVersion()}
@@ -121,6 +134,19 @@ export default function ForecastViewsPage() {
               by {forecast.lastSubmittedBy.name}
             </span>
           )}
+          <span className="text-xs text-muted ml-2">Compare to:</span>
+          <select
+            value={compareToVersionId ?? ""}
+            onChange={(e) => setCompareToVersionId(e.target.value || null)}
+            className="input-cell !font-sans !text-xs"
+          >
+            <option value="">— none —</option>
+            {versions.map((v) => (
+              <option key={v.id} value={v.id}>
+                v{v.version} · {v.label}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="flex items-center gap-2">
           <button className="btn-ghost text-xs" onClick={reEdit}>
@@ -179,15 +205,19 @@ export default function ForecastViewsPage() {
                 {forecast.brand} · {forecast.geography} · {stage}
               </p>
             </div>
+
+            {/* Comparison summary lands at the top of LRP */}
+            <ChangeSummaryCard compareToVersionId={compareToVersionId} />
+
             <NetSalesTrajectory
               viewThroughYear={parseInt(forecast.timeframe.forecastEnd.slice(0, 4))}
               versions={[]}
-              compareToVersionId={null}
+              compareToVersionId={compareToVersionId}
             />
             <VarianceWaterfall
               year={2027}
               onYearChange={() => {}}
-              compareToVersionId={null}
+              compareToVersionId={compareToVersionId}
             />
             <ForecastEvolution
               viewThroughYear={parseInt(forecast.timeframe.forecastEnd.slice(0, 4))}
@@ -215,6 +245,10 @@ export default function ForecastViewsPage() {
                     13 weeks forward · Last actuals {forecast.stf.actualsCutoffDate}
                   </p>
                 </div>
+
+                {/* STF cycle comparison: current vs prior cycle, two lines */}
+                <StfCycleCompareChart compareToVersionId={compareToVersionId} />
+
                 <ReviewZone />
               </section>
 
