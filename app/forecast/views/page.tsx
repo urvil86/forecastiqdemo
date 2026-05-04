@@ -15,7 +15,6 @@ import { NetSalesTrajectory } from "@/components/lrp/review/NetSalesTrajectory";
 import { VarianceWaterfall } from "@/components/lrp/review/VarianceWaterfall";
 import { ForecastEvolution } from "@/components/lrp/review/ForecastEvolution";
 import { DriverSensitivity } from "@/components/lrp/review/DriverSensitivity";
-import { PeakYearAnalysis } from "@/components/lrp/review/PeakYearAnalysis";
 import { ConfidenceCone } from "@/components/lrp/review/ConfidenceCone";
 import { ReviewZone } from "@/components/stf/ReviewZone";
 import { ForecastStackView } from "@/components/connect/ForecastStackView";
@@ -309,9 +308,6 @@ export default function ForecastViewsPage() {
               viewThroughYear={parseInt(forecast.timeframe.forecastEnd.slice(0, 4))}
             />
             <DriverSensitivity targetYear={2030} />
-            <PeakYearAnalysis
-              viewThroughYear={parseInt(forecast.timeframe.forecastEnd.slice(0, 4))}
-            />
             <ConfidenceCone
               viewThroughYear={parseInt(forecast.timeframe.forecastEnd.slice(0, 4))}
             />

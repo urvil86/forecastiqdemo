@@ -217,7 +217,7 @@ export function getOcrevusExclusivitySeed(): ConnectedForecast {
           id: "ocrevus-600mg",
           displayName: "Ocrevus 600mg",
           category: "commercial",
-          active: false,
+          active: true,
           defaultMixPct: 0.2,
         },
         {
@@ -232,6 +232,10 @@ export function getOcrevusExclusivitySeed(): ConnectedForecast {
         { sku: "ocrevus-300mg", tier: "wholesaler", units: 148000 },
         { sku: "ocrevus-300mg", tier: "specialty-pharmacy", units: 48000 },
         { sku: "ocrevus-300mg", tier: "hub", units: 8000 },
+        // 600mg presentation — ~20% of total volume
+        { sku: "ocrevus-600mg", tier: "wholesaler", units: 38000 },
+        { sku: "ocrevus-600mg", tier: "specialty-pharmacy", units: 12000 },
+        { sku: "ocrevus-600mg", tier: "hub", units: 2000 },
       ],
       holidayCalendar: [
         { date: "2026-05-25", name: "Memorial Day", defaultAdjustmentPct: -0.08 },
