@@ -257,6 +257,16 @@ interface AppStore {
     | { ok: false; reason: "no-changes" };
   setCycleName: (name: string) => void;
   setCycleHorizonYears: (years: number) => void;
+
+  /**
+   * Pre-launch STF activation: derives a weekly/daily STF anchored at the
+   * configured launch date. Sets the actuals cutoff to the day before
+   * launch (so the STF treats post-launch weeks as forecast) and the
+   * horizon to the chosen number of weeks. Does NOT mutate the LRP — the
+   * engine reads the LRP cascade and emits weekly/daily values for the
+   * post-launch window automatically. Idempotent.
+   */
+  activatePreLaunchStf: (opts: { horizonWeeks: number; grain: "weekly" | "daily" }) => void;
 }
 
 let recomputeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1435,6 +1445,42 @@ export const useStore = create<AppStore>()(
       },
       setCycleHorizonYears: (years) => {
         set((s) => ({ forecast: { ...s.forecast, cycleHorizonYears: years } }));
+      },
+      activatePreLaunchStf: ({ horizonWeeks, grain }) => {
+        set((s) => {
+          const launch =
+            s.forecast.preLaunchOverlay?.launchTrajectory?.expectedLaunchDate;
+          if (!launch) return s;
+          // Snap actuals cutoff to the Monday before launch so the engine's
+          // weekStart grid aligns cleanly. We also derive a "latest partial"
+          // one day before the cutoff so nothing reads as partial.
+          const launchDate = new Date(launch);
+          const day = launchDate.getUTCDay();
+          const offsetToMon = day === 0 ? 7 : day; // back up to previous Mon
+          const cutoff = new Date(launchDate.getTime());
+          cutoff.setUTCDate(cutoff.getUTCDate() - offsetToMon);
+          const cutoffIso = cutoff.toISOString().slice(0, 10);
+          const partial = new Date(cutoff.getTime());
+          partial.setUTCDate(partial.getUTCDate() - 1);
+          const partialIso = partial.toISOString().slice(0, 10);
+          return {
+            forecast: {
+              ...s.forecast,
+              stf: {
+                ...s.forecast.stf,
+                actualsCutoffDate: cutoffIso,
+                latestPartialDate: partialIso,
+                horizonWeeks,
+                granularity: grain,
+              },
+              draftStatus:
+                s.forecast.draftStatus === "submitted"
+                  ? "draft"
+                  : s.forecast.draftStatus,
+            },
+          };
+        });
+        scheduleRecompute(get);
       },
       submitForecast: () => {
         const state = get();
