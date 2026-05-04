@@ -21,6 +21,7 @@ import { LoeOverlayCard } from "./LoeOverlayCard";
 import { LrpEventsCard } from "./LrpEventsCard";
 import { StfSetupCard } from "./StfSetupCard";
 import { DriftPanel } from "./DriftPanel";
+import { PreLaunchStfCard } from "./PreLaunchStfCard";
 import { BuildZone } from "@/components/stf/BuildZone";
 import { validateInput, summary, type InputIssue } from "./validation";
 
@@ -299,7 +300,7 @@ export function InputPage() {
               <p className="text-xs text-muted mt-0.5">
                 {stfVisible
                   ? "13 weeks forward · Trend + Events"
-                  : "Activates after launch"}
+                  : `Derived from LRP at launch · ${forecast.preLaunchOverlay?.launchTrajectory?.expectedLaunchDate?.slice(0, 10) ?? "set launch date"}`}
               </p>
             </div>
             {stfVisible ? (
@@ -313,18 +314,7 @@ export function InputPage() {
                 </div>
               </div>
             ) : (
-              <div className="card border-l-4 border-primary">
-                <h4 className="font-heading text-h4 text-secondary mb-2">
-                  STF activates after launch
-                </h4>
-                <p className="text-sm text-muted">
-                  Currently no commercial actuals for {forecast.brand}.
-                  {forecast.preLaunchOverlay?.launchTrajectory
-                    .expectedLaunchDate &&
-                    ` Expected launch: ${forecast.preLaunchOverlay.launchTrajectory.expectedLaunchDate.slice(0, 10)}.`}{" "}
-                  At launch, this section becomes editable.
-                </p>
-              </div>
+              <PreLaunchStfSection />
             )}
           </section>
 
@@ -438,5 +428,46 @@ function ValidationPill({
     <span className="pill text-[10px] bg-red-500/10 text-red-700 border border-red-500/30">
       {count} errors
     </span>
+  );
+}
+
+/**
+ * Pre-launch STF section: PreLaunchStfCard always shows. Once the
+ * forecaster clicks "Activate STF" (which sets the actuals cutoff to
+ * the launch date), the regular Setup + Build Zone reveals so they can
+ * layer weekly authoring on top of the LRP-derived baseline.
+ */
+function PreLaunchStfSection() {
+  const forecast = useStore((s) => s.forecast);
+  const launch =
+    forecast.preLaunchOverlay?.launchTrajectory?.expectedLaunchDate;
+  const isActivated = useMemo(() => {
+    if (!launch) return false;
+    const launchTime = new Date(launch).getTime();
+    const cutoffTime = new Date(forecast.stf.actualsCutoffDate).getTime();
+    return Math.abs(launchTime - cutoffTime) < 14 * 86400_000;
+  }, [forecast.stf.actualsCutoffDate, launch]);
+
+  return (
+    <div className="space-y-8">
+      <PreLaunchStfCard />
+      {isActivated && (
+        <>
+          <StfSetupCard />
+          <div>
+            <h4 className="font-heading text-h4 text-secondary mb-2">
+              3.4 Build &amp; Weekly Authoring (post-launch overrides)
+            </h4>
+            <p className="text-xs text-muted mb-2">
+              The LRP-derived baseline is now editable week by week. Add
+              launch-quarter events (DTC flights, congresses), set
+              channel-specific overrides, configure NFS / pricing for the
+              launch window.
+            </p>
+            <BuildZone />
+          </div>
+        </>
+      )}
+    </div>
   );
 }

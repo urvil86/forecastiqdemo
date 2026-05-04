@@ -19,6 +19,9 @@ export function SaveSnapshotModal({ open, onClose, action, triggerLabel }: Props
   const computed = useStore((s) => s.computed);
   const currentDemoUser = useStore((s) => s.currentDemoUser);
   const createSnapshot = useStore((s) => s.createSnapshot);
+  const executeReconciliationAction = useStore(
+    (s) => s.executeReconciliationAction,
+  );
   const variance = useStore((s) => s.varianceStatus)();
   const [reason, setReason] = useState("");
   const [notify, setNotify] = useState<string[]>([]);
@@ -49,13 +52,24 @@ export function SaveSnapshotModal({ open, onClose, action, triggerLabel }: Props
         .map((id) => DEMO_USERS.find((u) => u.id === id))
         .filter((u): u is (typeof DEMO_USERS)[number] => Boolean(u))
         .map((u) => ({ name: u.name, email: `${u.id}@chryselys.demo` }));
-      createSnapshot({
-        triggerType: isManual ? "manual-save" : "reconciliation",
-        triggerReason: isManual ? "user-initiated" : "variance-breach",
-        action: action ?? undefined,
-        reason: reason.trim() || undefined,
-        notify: notifyList.length > 0 ? notifyList : undefined,
-      });
+      if (isManual) {
+        // Manual checkpoint — pure snapshot, no forecast mutation
+        createSnapshot({
+          triggerType: "manual-save",
+          triggerReason: "user-initiated",
+          reason: reason.trim() || undefined,
+          notify: notifyList.length > 0 ? notifyList : undefined,
+        });
+      } else if (action) {
+        // Reconciliation action — actually mutate the forecast where the
+        // action prescribes (refresh-lrp / adjust-stf), or audit-only for
+        // document-accept. Snapshot is created inside the store action.
+        executeReconciliationAction({
+          action,
+          reason: reason.trim() || undefined,
+          notify: notifyList.length > 0 ? notifyList : undefined,
+        });
+      }
       setReason("");
       setNotify([]);
       onClose();
@@ -89,6 +103,14 @@ export function SaveSnapshotModal({ open, onClose, action, triggerLabel }: Props
             </div>
             <div className="font-semibold text-secondary">
               {triggerLabel ?? actionDisplayLabel()}
+            </div>
+            <div className="text-[11px] text-muted mt-1">
+              {action === "refresh-lrp" &&
+                "Brand share for the cycle year and the year after will scale by the rolling 13-week variance, then the LRP recomputes. Snapshot tagged LRP-scope."}
+              {action === "adjust-stf" &&
+                "Per-SKU weekly overrides will be written for the next 13 forward weeks at the LRP-target run-rate. Snapshot tagged STF-scope."}
+              {action === "document-accept" &&
+                "Variance is acknowledged with the reason captured below. No changes to LRP or STF assumptions. Audit snapshot only."}
             </div>
           </div>
         )}

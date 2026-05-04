@@ -45,7 +45,20 @@ export default function ForecastViewsPage() {
   );
   const stage = forecast.lifecycleStage ?? brandConfig.defaultStage;
   const draft = forecast.draftStatus ?? "draft";
-  const stfVisible = stage !== "pre-launch";
+  // STF is visible for growth/loe always; for pre-launch when the user
+  // has activated the LRP-derived STF (cutoff aligned to launch date).
+  const isPreLaunchStfActive = useMemo(() => {
+    const launch =
+      forecast.preLaunchOverlay?.launchTrajectory?.expectedLaunchDate;
+    if (!launch) return false;
+    const launchTime = new Date(launch).getTime();
+    const cutoffTime = new Date(forecast.stf.actualsCutoffDate).getTime();
+    return Math.abs(launchTime - cutoffTime) < 14 * 86400_000;
+  }, [
+    forecast.preLaunchOverlay?.launchTrajectory?.expectedLaunchDate,
+    forecast.stf.actualsCutoffDate,
+  ]);
+  const stfVisible = stage !== "pre-launch" || isPreLaunchStfActive;
 
   // Scope-aware version lists: LRP charts pick from lrp + full snapshots,
   // STF charts pick from stf + full snapshots.
