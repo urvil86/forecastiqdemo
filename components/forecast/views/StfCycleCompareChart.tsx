@@ -69,6 +69,9 @@ export function StfCycleCompareChart({ compareToVersionId }: Props) {
   const totalPrior = data.reduce((s, r) => s + (r.prior ?? 0), 0);
   const delta = totalCurrent - totalPrior;
   const pct = totalPrior > 0 ? delta / totalPrior : 0;
+  const isIdentical =
+    baseline !== null &&
+    Math.abs(totalCurrent - totalPrior) < 0.001;
 
   return (
     <div>
@@ -101,6 +104,13 @@ export function StfCycleCompareChart({ compareToVersionId }: Props) {
           )}
         </div>
       </div>
+
+      {isIdentical && (
+        <div className="mb-2 p-2 rounded border border-amber-300 bg-amber-50 text-[11px] text-amber-800">
+          The selected comparison version has identical 13-week values — both
+          lines overlap. Pick a different version to see drift.
+        </div>
+      )}
 
       <div className="card">
         <div className="h-72">

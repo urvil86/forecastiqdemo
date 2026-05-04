@@ -68,3 +68,11 @@ export {
   seedOcrevusLoeOverlay,
   v26InputsForBrand,
 } from "./seedV26";
+
+// v2.6.1 Scoped versioning helpers
+export {
+  detectScopeChanges,
+  scopeFromChanges,
+  snapshotsInScope,
+  type ScopeChange,
+} from "./forecastScope";

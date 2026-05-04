@@ -6,12 +6,14 @@ import { DEMO_USERS } from "@/lib/engine";
 import type { VersionSnapshot } from "@/lib/engine";
 
 type TriggerFilter = "all" | "reconciliation" | "manual-save" | "scheduled";
+type ScopeFilter = "all" | "lrp" | "stf" | "full";
 type Sort = "newest" | "oldest";
 
 export function VersionLog() {
   const versions = useStore((s) => s.versionHistory);
   const restoreSnapshot = useStore((s) => s.restoreSnapshot);
   const [triggerFilter, setTriggerFilter] = useState<TriggerFilter>("all");
+  const [scopeFilter, setScopeFilter] = useState<ScopeFilter>("all");
   const [userFilter, setUserFilter] = useState<string>("all");
   const [sort, setSort] = useState<Sort>("newest");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -20,6 +22,11 @@ export function VersionLog() {
   const filtered = useMemo(() => {
     const list = versions.filter((v) => {
       if (triggerFilter !== "all" && v.triggerType !== triggerFilter) return false;
+      if (scopeFilter !== "all") {
+        if (scopeFilter === "lrp" && v.scope !== "lrp" && v.scope !== "full") return false;
+        if (scopeFilter === "stf" && v.scope !== "stf" && v.scope !== "full") return false;
+        if (scopeFilter === "full" && v.scope !== "full") return false;
+      }
       if (userFilter !== "all" && v.createdBy?.id !== userFilter) return false;
       return true;
     });
@@ -28,7 +35,7 @@ export function VersionLog() {
       return sort === "newest" ? -cmp : cmp;
     });
     return list;
-  }, [versions, triggerFilter, userFilter, sort]);
+  }, [versions, triggerFilter, scopeFilter, userFilter, sort]);
 
   function toggle(id: string) {
     setExpanded((s) => {
@@ -88,6 +95,16 @@ export function VersionLog() {
           <option value="scheduled">Scheduled</option>
         </select>
         <select
+          value={scopeFilter}
+          onChange={(e) => setScopeFilter(e.target.value as ScopeFilter)}
+          className="input-cell !font-sans !text-xs"
+        >
+          <option value="all">All scopes</option>
+          <option value="lrp">LRP only</option>
+          <option value="stf">STF only</option>
+          <option value="full">Full submits</option>
+        </select>
+        <select
           value={userFilter}
           onChange={(e) => setUserFilter(e.target.value)}
           className="input-cell !font-sans !text-xs"
@@ -125,8 +142,24 @@ export function VersionLog() {
                     {v.createdBy?.initials ?? "??"}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-sm text-secondary">
-                      {actionLabel(v)}
+                    <div className="flex items-baseline gap-2 flex-wrap">
+                      <div className="font-semibold text-sm text-secondary">
+                        {actionLabel(v)}
+                      </div>
+                      {v.scope && (
+                        <span
+                          className={
+                            "pill text-[9px] uppercase tracking-wider " +
+                            (v.scope === "lrp"
+                              ? "bg-sky-500/10 text-sky-700 border border-sky-500/30"
+                              : v.scope === "stf"
+                              ? "bg-purple-500/10 text-purple-700 border border-purple-500/30"
+                              : "bg-gray-500/10 text-gray-700 border border-gray-500/30")
+                          }
+                        >
+                          {v.scope}
+                        </span>
+                      )}
                     </div>
                     <div className="text-[11px] text-muted">
                       {v.createdBy?.name ?? "Unknown"} · {v.createdBy?.role ?? ""} ·{" "}

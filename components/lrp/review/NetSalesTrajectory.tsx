@@ -113,9 +113,31 @@ export function NetSalesTrajectory({
 
   const cutoffYear = parseInt(forecast.timeframe.forecastStart.slice(0, 4));
 
+  // Detect whether the picked comparison line overlaps the current line —
+  // if so, surface a hint so the user doesn't think the chart is broken.
+  const overlapsCurrent = useMemo(() => {
+    if (!hasSpecificCompare || priorList.length !== 1) return false;
+    const p = priorList[0];
+    let maxRel = 0;
+    for (const a of computed?.annual ?? []) {
+      const found = p.computed.annual.find((aa) => aa.year === a.year);
+      if (!found) continue;
+      const denom = a.netSales || 1;
+      const rel = Math.abs(found.netSales - a.netSales) / denom;
+      if (rel > maxRel) maxRel = rel;
+    }
+    return maxRel < 0.001;
+  }, [computed, priorList, hasSpecificCompare]);
+
   return (
     <div>
       <SectionHeader title="Net Sales Trajectory · 2022–2035" subtitle="Current forecast vs prior versions, with historical actuals." />
+      {overlapsCurrent && (
+        <div className="mb-2 p-2 rounded border border-amber-300 bg-amber-50 text-[11px] text-amber-800">
+          The selected comparison version has identical annual values — both
+          lines overlap on the chart. Pick a different version to see drift.
+        </div>
+      )}
       <div className="card">
         <div className="h-80">
           <ResponsiveContainer>

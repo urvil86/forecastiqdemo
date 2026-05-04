@@ -93,8 +93,21 @@ export function InputPage() {
     setSubmitting(true);
     try {
       await new Promise((r) => setTimeout(r, 50));
-      submitForecast();
-      setToast("Forecast submitted. Snapshot saved.");
+      const result = submitForecast();
+      if (!result.ok) {
+        setToast(
+          "No changes since last submit. Edit any assumption to enable Submit.",
+        );
+        setTimeout(() => setToast(null), 3000);
+        return;
+      }
+      const scopeText =
+        result.scope === "lrp"
+          ? `LRP submitted (LRP v${result.lrpVersion}). Snapshot saved.`
+          : result.scope === "stf"
+          ? `STF submitted (STF v${result.stfVersion}). Snapshot saved.`
+          : `Forecast submitted (LRP v${result.lrpVersion}, STF v${result.stfVersion}). Snapshot saved.`;
+      setToast(scopeText);
       setTimeout(() => {
         router.push("/forecast/views/");
       }, 700);
