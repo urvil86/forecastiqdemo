@@ -118,11 +118,6 @@ export function ChangeSummaryCard({ compareToVersionId, scope }: Props) {
     );
   }
 
-  const grouped = diffs.reduce<Record<string, ForecastDiff[]>>((acc, d) => {
-    (acc[d.driver] ??= []).push(d);
-    return acc;
-  }, {});
-
   return (
     <div className="card border-l-4 border-amber-500 bg-amber-50/40">
       <div className="flex items-baseline justify-between flex-wrap gap-2 mb-3">
@@ -163,52 +158,9 @@ export function ChangeSummaryCard({ compareToVersionId, scope }: Props) {
         />
       </div>
 
-      {/* Per-driver counts + top 8 changes */}
-      {diffs.length > 0 ? (
-        <>
-          <div className="flex flex-wrap gap-1 mb-2 text-[10px]">
-            {Object.entries(grouped).map(([driver, items]) => (
-              <span
-                key={driver}
-                className="pill bg-background border border-border text-muted"
-              >
-                {driver}: {items.length}
-              </span>
-            ))}
-          </div>
-          <ul className="space-y-1 text-xs">
-            {diffs.slice(0, 8).map((d, i) => (
-              <li
-                key={`${d.driver}-${d.field}-${d.period}-${i}`}
-                className="flex items-baseline justify-between gap-2 p-2 border border-border bg-surface rounded"
-              >
-                <div className="min-w-0">
-                  <span className="font-semibold text-secondary">
-                    {d.driver}
-                  </span>
-                  <span className="text-muted"> · </span>
-                  <span>{d.field}</span>
-                  <span className="text-muted"> · </span>
-                  <span className="font-mono text-[11px]">{d.period}</span>
-                </div>
-                <span className="font-mono text-[11px] shrink-0">
-                  {d.display ?? `${String(d.before)} → ${String(d.after)}`}
-                </span>
-              </li>
-            ))}
-          </ul>
-          {diffs.length > 8 && (
-            <p className="text-[11px] text-muted mt-1 italic">
-              {diffs.length - 8} more changes — see Input · Drift panel for the
-              full list.
-            </p>
-          )}
-        </>
-      ) : (
-        <div className="text-xs text-muted italic">
-          No assumption changes vs the comparison version.
-        </div>
-      )}
+      <p className="text-[11px] text-muted italic">
+        See Input · Drift panel for the full list of changed assumptions.
+      </p>
     </div>
   );
 }

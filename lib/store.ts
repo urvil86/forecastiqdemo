@@ -1390,7 +1390,7 @@ export const useStore = create<AppStore>()(
     }),
     {
       name: "forecastiq-v2",
-      version: 8,
+      version: 9,
       partialize: (state) => ({
         forecast: state.forecast,
         versionHistory: state.versionHistory,
@@ -1407,9 +1407,9 @@ export const useStore = create<AppStore>()(
         leftPanelHidden: state.leftPanelHidden,
       }),
       migrate: ((persisted: unknown, version: number) => {
-        // Drop any state from < v8 — Ocrevus 600mg SKU activated and seeded
-        // with inventory; re-seed cleanly so existing browser state picks up.
-        if (version < 8) return undefined;
+        // Drop any state from < v9 — SKU shape extended with
+        // relativePriceMultiplier so mix changes drive forecast totals.
+        if (version < 9) return undefined;
         return persisted;
       }) as never,
       merge: (persisted, current) => {
